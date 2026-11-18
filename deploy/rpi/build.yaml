@@ -1,0 +1,8 @@
+core:
+  path: upstream/prusa-connect
+adapters:
+  - module: pcma.local/moonraker
+    path: adapter
+config: upstream/prusa-connect/config/config.yaml
+variant: full
+output: bin/prusa-connect-pcma

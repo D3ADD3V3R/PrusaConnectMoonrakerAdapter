@@ -1,0 +1,1123 @@
+diff --git a/frontend/src/lib/screens/add-printer.svelte b/frontend/src/lib/screens/add-printer.svelte
+index 82888dd..ecaec69 100644
+--- a/frontend/src/lib/screens/add-printer.svelte
++++ b/frontend/src/lib/screens/add-printer.svelte
+@@ -19,12 +19,17 @@
+   } from '@prusa/connect-ui/shell';
+   import { deviceIdOf } from '@prusa/connect-ui/data';
+   import { onMount } from 'svelte';
++  import { translateFor } from '@prusa/connect-ui/i18n';
++  import { Button } from '@prusa/connect-ui/primitives';
+ 
+   import { client } from '../client';
+   import type { AppContext } from '../screens';
+   import { PrinterAuthority } from '../stores/printer-authority.svelte';
++  import MoonrakerSetup from '../printers/moonraker-setup/moonraker-setup.svelte';
+ 
+   let { ctx }: { ctx: AppContext } = $props();
++  let protocol = $state<'prusa' | 'moonraker'>('prusa');
++  const t = translateFor('app');
+ 
+   const registrations = $derived(ctx.registrations);
+   const authority = new PrinterAuthority(client);
+@@ -160,24 +165,49 @@
+   });
+ </script>
+ 
+-<AddPrinterScreen
+-  {connection}
+-  admission={ctx.settings.printerAdmission}
+-  {pending}
+-  {joining}
+-  {joined}
+-  {refused}
+-  printersHref="/printers"
+-  error={registrations.error}
+-  authority={authority.file}
+-  docsHref={ctx.settings.documentation}
+-  onBegin={() => {
+-    since = Date.now();
+-  }}
+-  onApprove={(code: string) => {
+-    void registrations.approve(code);
+-  }}
+-  onReject={(code: string) => {
+-    void registrations.reject(code);
+-  }}
+-/>
++<div
++  class="flex flex-wrap gap-2"
++  role="group"
++  aria-label={t('app.addPrinter.connectionType')}
++>
++  <Button
++    variant={protocol === 'prusa' ? 'secondary' : 'ghost'}
++    aria-pressed={protocol === 'prusa'}
++    onclick={() => {
++      protocol = 'prusa';
++    }}>{t('app.addPrinter.prusa')}</Button
++  >
++  <Button
++    variant={protocol === 'moonraker' ? 'secondary' : 'ghost'}
++    aria-pressed={protocol === 'moonraker'}
++    onclick={() => {
++      protocol = 'moonraker';
++    }}>{t('app.addPrinter.moonraker')}</Button
++  >
++</div>
++
++{#if protocol === 'moonraker'}
++  <MoonrakerSetup />
++{:else}
++  <AddPrinterScreen
++    {connection}
++    admission={ctx.settings.printerAdmission}
++    {pending}
++    {joining}
++    {joined}
++    {refused}
++    printersHref="/printers"
++    error={registrations.error}
++    authority={authority.file}
++    docsHref={ctx.settings.documentation}
++    onBegin={() => {
++      since = Date.now();
++    }}
++    onApprove={(code: string) => {
++      void registrations.approve(code);
++    }}
++    onReject={(code: string) => {
++      void registrations.reject(code);
++    }}
++  />
++{/if}
+diff --git a/frontend/src/lib/screens/add-printer.svelte.test.ts b/frontend/src/lib/screens/add-printer.svelte.test.ts
+index 1578ea8..530e936 100644
+--- a/frontend/src/lib/screens/add-printer.svelte.test.ts
++++ b/frontend/src/lib/screens/add-printer.svelte.test.ts
+@@ -58,6 +58,19 @@ const next = async (): Promise<void> => {
+ };
+ 
+ describe('the add-printer page', () => {
++  it('offers the Moonraker form alongside the Prusa guide', async () => {
++    await open({ printer_admission: 'approval' });
++    await page
++      .getByRole('button', { name: 'Klipper / Moonraker', exact: true })
++      .click();
++    await expect
++      .element(page.getByRole('textbox', { name: 'Moonraker address' }))
++      .toBeVisible();
++    await page.getByRole('button', { name: 'Prusa', exact: true }).click();
++    await expect
++      .element(page.getByRole('button', { name: 'Next', exact: true }))
++      .toBeVisible();
++  });
+   // A printer may reach this server by another name than the browser did,
+   // and a settings file naming the browser's host fails TLS on the printer.
+   it('writes the address the server names for printers', async () => {
+diff --git a/frontend/src/locales/en.json b/frontend/src/locales/en.json
+index 313869d..165c9d8 100644
+--- a/frontend/src/locales/en.json
++++ b/frontend/src/locales/en.json
+@@ -431,5 +431,25 @@
+   "app.settings.extensions.fault.requiredBy": "Other installed extensions require this one: {requires}",
+   "app.settings.extensions.fault.requiredBy.action": "Remove those extensions first, or update them to releases that fit the change.",
+   "app.settings.extensions.fault.planChanged": "The extensions the install adds changed since you read them. It now adds: {found}",
+-  "app.settings.extensions.fault.planChanged.action": "Nothing was installed. Open the install again to read what it adds now, then approve it."
++  "app.settings.extensions.fault.planChanged.action": "Nothing was installed. Open the install again to read what it adds now, then approve it.",
++  "app.addPrinter.moonraker.addressHint": "For example printer.local:7125, or a full HTTP or HTTPS address.",
++  "app.addPrinter.moonraker.title": "Connect a Moonraker printer",
++  "app.addPrinter.moonraker.connecting": "Saving the connection and waiting for the printer…",
++  "app.addPrinter.prusa": "Prusa",
++  "app.addPrinter.moonraker.connect": "Connect printer",
++  "app.addPrinter.moonraker.description": "Enter the Moonraker address reachable from this server. Adding a printer does not start a print.",
++  "app.addPrinter.moonraker.invalid": "Check the printer name and address. Use an HTTP or HTTPS address without a login, path, query or fragment.",
++  "app.addPrinter.moonraker.nameHint": "Use 1–63 letters, numbers, underscores or hyphens. Start with a letter or number.",
++  "app.addPrinter.moonraker.address": "Moonraker address",
++  "app.addPrinter.moonraker.open": "Open printer",
++  "app.addPrinter.moonraker.back": "Back to printers",
++  "app.addPrinter.moonraker.waiting": "Connection saved. The printer has not connected yet. Check the address and that Moonraker is running, then check again.",
++  "app.addPrinter.moonraker.retry": "Check again",
++  "app.addPrinter.moonraker.name": "Printer name",
++  "app.addPrinter.moonraker": "Klipper / Moonraker",
++  "app.addPrinter.moonraker.connected": "Printer connected.",
++  "app.addPrinter.connectionType": "Printer connection",
++  "app.addPrinter.attribution": "PrusaConnectMoonrakerAdapter by D3ADD3V3R. Built on Prusa Connect Local by Prusa Research a.s. (prusa3d.com).",
++  "app.addPrinter.moonraker.update": "Save address",
++  "app.addPrinter.moonraker.edit": "Edit address"
+ }
+diff --git a/docs/changes/20261118-223000-moonraker-printer-setup.md b/docs/changes/20261118-223000-moonraker-printer-setup.md
+new file mode 100644
+--- /dev/null
++++ b/docs/changes/20261118-223000-moonraker-printer-setup.md
+@@ -0,0 +1,3 @@
++### Added
++
++- Add a Printer offers Klipper / Moonraker alongside the Prusa guide. Enter a name and Moonraker address to save the connection and wait for the printer to appear.
+diff --git a/frontend/src/lib/printers/moonraker-setup/moonraker-setup-story.svelte b/frontend/src/lib/printers/moonraker-setup/moonraker-setup-story.svelte
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/lib/printers/moonraker-setup/moonraker-setup-story.svelte
+@@ -0,0 +1,39 @@
++<script lang="ts">
++  import { onMount } from 'svelte';
++
++  import { json, problem, stubClient } from '../../../test/stub';
++  import { MoonrakerSetup } from '../../stores/moonraker-setup.svelte';
++  import Setup from './moonraker-setup.svelte';
++
++  interface Props {
++    state?: 'idle' | 'waiting' | 'connected' | 'refused';
++  }
++  let { state = 'idle' }: Props = $props();
++  // svelte-ignore state_referenced_locally
++  const stub = stubClient({
++    'PUT /api/v1/connector-endpoints/endofprinter':
++      state === 'refused' ? problem(403, 'AUTHZ_FORBIDDEN') : json(201, {}),
++    'GET /api/v1/devices': json(200, {
++      total: 1,
++      items: [
++        {
++          id: 'printer-1',
++          driver: 'pcma',
++          serial: 'EndOfPrinter',
++          unit_uid: 'endofprinter',
++          connected: state === 'connected',
++        },
++      ],
++    }),
++  });
++  const setup = new MoonrakerSetup(stub.client, 100);
++  onMount(() => {
++    if (state !== 'idle')
++      void setup.connect({
++        name: 'EndOfPrinter',
++        address: 'http://printer.local:7125',
++      });
++  });
++</script>
++
++<Setup {setup} />
+diff --git a/frontend/src/lib/printers/moonraker-setup/moonraker-setup.stories.svelte b/frontend/src/lib/printers/moonraker-setup/moonraker-setup.stories.svelte
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/lib/printers/moonraker-setup/moonraker-setup.stories.svelte
+@@ -0,0 +1,11 @@
++<script module lang="ts">
++  import { defineMeta } from '@storybook/addon-svelte-csf';
++  import SetupStory from './moonraker-setup-story.svelte';
++
++  const { Story } = defineMeta({ title: 'Screens/Printers/Moonraker setup' });
++</script>
++
++<Story name="Ready"><SetupStory /></Story>
++<Story name="Waiting for printer"><SetupStory state="waiting" /></Story>
++<Story name="Connected"><SetupStory state="connected" /></Story>
++<Story name="Refused"><SetupStory state="refused" /></Story>
+diff --git a/frontend/src/lib/printers/moonraker-setup/moonraker-setup.svelte b/frontend/src/lib/printers/moonraker-setup/moonraker-setup.svelte
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/lib/printers/moonraker-setup/moonraker-setup.svelte
+@@ -0,0 +1,154 @@
++<script lang="ts">
++  import {
++    describeFault,
++    t as coreT,
++    translateFor,
++  } from '@prusa/connect-ui/i18n';
++  import {
++    Alert,
++    AlertDescription,
++    Button,
++    Card,
++    CardContent,
++    CardHeader,
++    CardTitle,
++    FaultAlert,
++    Field,
++    Input,
++    PageHeader,
++    PageTrail,
++  } from '@prusa/connect-ui/primitives';
++  import { printerHref } from '@prusa/connect-ui/shell';
++  import { onDestroy } from 'svelte';
++
++  import { client } from '../../client';
++  import { moonrakerDraft } from '../../services/moonraker';
++  import { MoonrakerSetup } from '../../stores/moonraker-setup.svelte';
++
++  interface Props {
++    setup?: MoonrakerSetup;
++  }
++  let { setup = new MoonrakerSetup(client) }: Props = $props();
++  let name = $state('');
++  let address = $state('');
++  let invalid = $state(false);
++  const t = translateFor('app');
++  const fault = $derived(setup.error ? describeFault(setup.error) : undefined);
++  const locked = $derived(setup.busy || setup.saved);
++  const deviceHref = $derived(
++    setup.deviceId ? printerHref(setup.deviceId) : undefined,
++  );
++  const submitLabel = $derived.by(() => {
++    if (setup.editing) return 'app.addPrinter.moonraker.update';
++    if (setup.saved) return 'app.addPrinter.moonraker.retry';
++    return 'app.addPrinter.moonraker.connect';
++  });
++  onDestroy(() => {
++    setup.close();
++  });
++
++  const submit = (event: SubmitEvent) => {
++    event.preventDefault();
++    const draft = setup.editing
++      ? moonrakerDraft(setup.draft?.name ?? name, address)
++      : (setup.draft ?? moonrakerDraft(name, address));
++    invalid = !draft;
++    if (draft) void setup.connect(draft);
++  };
++</script>
++
++<section class="flex flex-col gap-4">
++  <PageTrail
++    trail={[{ label: coreT('addPrinter.trail.printers'), href: '/printers' }]}
++    page={coreT('addPrinter.title')}
++  />
++  <PageHeader title={coreT('addPrinter.title')} />
++  <Card>
++    <CardHeader
++      ><CardTitle>{t('app.addPrinter.moonraker.title')}</CardTitle></CardHeader
++    >
++    <CardContent>
++      <form class="flex flex-col gap-4" onsubmit={submit}>
++        <p class="text-sm text-muted-foreground">
++          {t('app.addPrinter.moonraker.description')}
++        </p>
++        <Field
++          label={t('app.addPrinter.moonraker.name')}
++          description={t('app.addPrinter.moonraker.nameHint')}
++          control={Input}
++          controlProps={{
++            value: setup.draft?.name ?? name,
++            required: true,
++            maxlength: 63,
++            disabled: locked,
++            oninput: (event: Event) => {
++              if (event.currentTarget instanceof HTMLInputElement)
++                name = event.currentTarget.value;
++            },
++          }}
++        />
++        <Field
++          label={t('app.addPrinter.moonraker.address')}
++          description={t('app.addPrinter.moonraker.addressHint')}
++          control={Input}
++          controlProps={{
++            value: setup.editing ? address : (setup.draft?.address ?? address),
++            required: true,
++            maxlength: 253,
++            disabled: setup.busy || (setup.saved && !setup.editing),
++            oninput: (event: Event) => {
++              if (event.currentTarget instanceof HTMLInputElement)
++                address = event.currentTarget.value;
++            },
++          }}
++        />
++        {#if invalid}<Alert variant="destructive"
++            ><AlertDescription
++              >{t('app.addPrinter.moonraker.invalid')}</AlertDescription
++            ></Alert
++          >{/if}
++        {#if fault}<FaultAlert {fault} />{/if}
++        <div aria-live="polite">
++          {#if setup.busy}<p>{t('app.addPrinter.moonraker.connecting')}</p>
++          {:else if setup.phase === 'waiting'}<Alert variant="warning"
++              ><AlertDescription
++                >{t('app.addPrinter.moonraker.waiting')}</AlertDescription
++              ></Alert
++            >
++          {:else if setup.phase === 'connected'}<Alert variant="success"
++              ><AlertDescription
++                >{t('app.addPrinter.moonraker.connected')}</AlertDescription
++              ></Alert
++            >{/if}
++        </div>
++        <div class="flex flex-wrap gap-2">
++          {#if deviceHref}
++            <Button
++              >{#snippet child({ props })}<a {...props} href={deviceHref}
++                  >{t('app.addPrinter.moonraker.open')}</a
++                >{/snippet}</Button
++            >
++          {:else}
++            <Button type="submit" pending={setup.busy}>{t(submitLabel)}</Button>
++          {/if}
++          {#if setup.saved && !setup.busy && !setup.editing && !deviceHref}
++            <Button
++              type="button"
++              variant="secondary"
++              onclick={() => {
++                address = setup.draft?.address ?? '';
++                setup.editAddress();
++              }}>{t('app.addPrinter.moonraker.edit')}</Button
++            >
++          {/if}
++          <Button variant="secondary"
++            >{#snippet child({ props })}<a {...props} href="/printers"
++                >{t('app.addPrinter.moonraker.back')}</a
++              >{/snippet}</Button
++          >
++        </div>
++      </form>
++    </CardContent>
++  </Card>
++</section>
++<p class="text-xs text-muted-foreground">{t('app.addPrinter.attribution')}</p>
+diff --git a/frontend/src/lib/printers/moonraker-setup/moonraker-setup.svelte.test.ts b/frontend/src/lib/printers/moonraker-setup/moonraker-setup.svelte.test.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/lib/printers/moonraker-setup/moonraker-setup.svelte.test.ts
+@@ -0,0 +1,66 @@
++import { describe, expect, it } from 'vitest';
++import { page } from 'vitest/browser';
++import { render } from 'vitest-browser-svelte';
++
++import { json, problem, stubClient } from '../../../test/stub';
++import { MoonrakerSetup } from '../../stores/moonraker-setup.svelte';
++import Setup from './moonraker-setup.svelte';
++
++const fill = async () => {
++  await page.getByRole('textbox', { name: 'Printer name' }).fill('lab');
++  await page
++    .getByRole('textbox', { name: 'Moonraker address' })
++    .fill('printer.local:7125');
++};
++
++describe('Moonraker setup form', () => {
++  it('opens the printer only after the device is connected', async () => {
++    const stub = stubClient({
++      'PUT /api/v1/connector-endpoints/lab': json(201, {}),
++      'GET /api/v1/devices': json(200, {
++        total: 1,
++        items: [
++          {
++            id: 'device-1',
++            serial: 'lab',
++            unit_uid: 'lab',
++            driver: 'pcma',
++            connected: true,
++          },
++        ],
++      }),
++    });
++    await render(Setup, { setup: new MoonrakerSetup(stub.client) });
++    await fill();
++    await page
++      .getByRole('button', { name: 'Connect printer', exact: true })
++      .click();
++    await expect
++      .element(page.getByRole('link', { name: 'Open printer' }))
++      .toHaveAttribute('href', '/printers/device-1');
++    await expect
++      .element(page.getByText('Printer connected.', { exact: true }))
++      .toBeVisible();
++  });
++
++  it('keeps duplicate-name refusal visible without overwriting a connection', async () => {
++    const stub = stubClient({
++      'PUT /api/v1/connector-endpoints/lab': problem(
++        412,
++        'RESOURCE_VERSION_CONFLICT',
++      ),
++    });
++    await render(Setup, { setup: new MoonrakerSetup(stub.client) });
++    await fill();
++    await page
++      .getByRole('button', { name: 'Connect printer', exact: true })
++      .click();
++    await expect
++      .element(page.getByText('RESOURCE_VERSION_CONFLICT', { exact: true }))
++      .toBeVisible();
++    expect(stub.count('PUT /api/v1/connector-endpoints/lab')).toBe(1);
++    await expect
++      .element(page.getByRole('textbox', { name: 'Printer name' }))
++      .toBeEnabled();
++  });
++});
+diff --git a/frontend/src/lib/services/moonraker.test.ts b/frontend/src/lib/services/moonraker.test.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/lib/services/moonraker.test.ts
+@@ -0,0 +1,178 @@
++import { describe, expect, it } from 'vitest';
++
++import { json, stubClient } from '../../test/stub';
++import {
++  addMoonraker,
++  connectedMoonraker,
++  moonrakerDraft,
++  updateMoonraker,
++} from './moonraker';
++
++describe('Moonraker addresses', () => {
++  it.each([
++    ['printer.local:80', 'http://printer.local'],
++    ['printer.local:80/', 'http://printer.local'],
++    ['192.168.1.2:80', 'http://192.168.1.2'],
++    ['192.168.1.2:80/', 'http://192.168.1.2'],
++    ['[::1]:80', 'http://[::1]'],
++    ['[::1]:80/', 'http://[::1]'],
++  ])(
++    'preserves an explicitly supplied default HTTP port: %s',
++    (address, expected) => {
++      expect(moonrakerDraft('lab', address)?.address).toBe(expected);
++    },
++  );
++  it('normalises a bare address and preserves an explicit proxy origin', () => {
++    expect(moonrakerDraft('EndOfPrinter', 'printer.local')).toEqual({
++      name: 'EndOfPrinter',
++      address: 'http://printer.local:7125',
++    });
++    expect(moonrakerDraft('lab', 'https://proxy.example/')).toEqual({
++      name: 'lab',
++      address: 'https://proxy.example',
++    });
++  });
++
++  it.each([
++    'ftp://printer',
++    'http://user:secret@printer',
++    'http://printer/path',
++    'http://printer?key=secret',
++    'http://printer/#x',
++    '',
++  ])('refuses %s', (address) => {
++    expect(moonrakerDraft('lab', address)).toBeUndefined();
++  });
++
++  it.each(['', '../printer', 'two printers', 'a'.repeat(64)])(
++    'refuses an invalid name',
++    (name) => {
++      expect(moonrakerDraft(name, 'printer.local')).toBeUndefined();
++    },
++  );
++
++  it('walks server-sized pages and matches identity and connectivity together', async () => {
++    const stub = stubClient({
++      'GET /api/v1/devices': (call) =>
++        json(200, {
++          total: 2,
++          items:
++            new URLSearchParams(call.query).get('offset') === '0'
++              ? [
++                  {
++                    id: 'wrong',
++                    driver: 'xbuddy',
++                    serial: 'lab',
++                    unit_uid: 'lab',
++                    connected: true,
++                  },
++                ]
++              : [
++                  {
++                    id: 'right',
++                    driver: 'pcma',
++                    serial: 'lab',
++                    unit_uid: 'lab',
++                    connected: true,
++                  },
++                ],
++        }),
++    });
++    expect(
++      await connectedMoonraker(
++        stub.client,
++        'lab',
++        new AbortController().signal,
++      ),
++    ).toBe('right');
++    expect(stub.count('GET /api/v1/devices')).toBe(2);
++  });
++});
++
++describe('saved Moonraker declarations', () => {
++  it('keeps the display name while generating a server-valid endpoint id', async () => {
++    const stub = stubClient({
++      'PUT /api/v1/connector-endpoints/ender-3': json(201, {}),
++    });
++    await addMoonraker(
++      stub.client,
++      { name: 'Ender_3', address: 'http://printer.local:7125' },
++      new AbortController().signal,
++    );
++    expect(JSON.parse(stub.calls[0]?.body ?? '{}')).toMatchObject({
++      options: { serial: 'Ender_3', unit_uid: 'ender-3', model: 'Klipper' },
++    });
++  });
++  const draft = { name: 'lab', address: 'http://printer.local:7125' };
++  const row = {
++    name: 'lab',
++    connector: 'pcma',
++    address: draft.address,
++    enabled: true,
++    options: { model: 'Klipper', serial: 'lab', unit_uid: 'lab' },
++    version: 'v4',
++  };
++  it('reuses an identical endpoint after an ambiguous create', async () => {
++    const stub = stubClient({
++      'PUT /api/v1/connector-endpoints/lab': new Error('response lost'),
++      'GET /api/v1/connector-endpoints': json(200, { items: [row] }),
++    });
++    expect(
++      await addMoonraker(stub.client, draft, new AbortController().signal),
++    ).toMatchObject(row);
++    expect(stub.count('PUT /api/v1/connector-endpoints/lab')).toBe(1);
++  });
++  it('never takes over a same-name endpoint with a different address', async () => {
++    const stub = stubClient({
++      'PUT /api/v1/connector-endpoints/lab': new Error('response lost'),
++      'GET /api/v1/connector-endpoints': json(200, {
++        items: [{ ...row, address: 'http://other:7125' }],
++      }),
++    });
++    await expect(
++      addMoonraker(stub.client, draft, new AbortController().signal),
++    ).rejects.toThrow();
++    expect(stub.count('PUT /api/v1/connector-endpoints/lab')).toBe(1);
++  });
++  it('fences an address correction with the version read from the server', async () => {
++    const stub = stubClient({
++      'PUT /api/v1/connector-endpoints/lab': json(200, {}),
++      'GET /api/v1/connector-endpoints': json(200, { items: [row] }),
++    });
++    await updateMoonraker(
++      stub.client,
++      draft,
++      { ...draft, address: 'http://correct:7125' },
++      new AbortController().signal,
++    );
++    expect(stub.calls[1]?.ifMatch).toBe('"v4"');
++    expect(JSON.parse(stub.calls[1]?.body ?? '{}')).toMatchObject({
++      address: 'http://correct:7125',
++    });
++  });
++  it('does not accept an old live session after an address correction', async () => {
++    const stub = stubClient({
++      'GET /api/v1/devices': json(200, {
++        total: 1,
++        items: [
++          {
++            id: 'old',
++            driver: 'pcma',
++            serial: 'lab',
++            unit_uid: 'lab',
++            connected: true,
++            capability_epoch: 4,
++          },
++        ],
++      }),
++    });
++    expect(
++      await connectedMoonraker(
++        stub.client,
++        'lab',
++        new AbortController().signal,
++        4,
++      ),
++    ).toBeUndefined();
++  });
++});
+diff --git a/frontend/src/lib/services/moonraker.ts b/frontend/src/lib/services/moonraker.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/lib/services/moonraker.ts
+@@ -0,0 +1,155 @@
++import { ApiError, type components, type PrusaConnect } from '@prusa/connect';
++
++export type MoonrakerClient = Pick<
++  PrusaConnect,
++  'putConnectorEndpoint' | 'listConnectorEndpoints' | 'listDevices'
++>;
++export interface MoonrakerDraft {
++  readonly name: string;
++  readonly address: string;
++}
++
++const endpointName = (name: string): string =>
++  name.toLowerCase().replaceAll('_', '-');
++const endpointOptions = (name: string) => ({
++  serial: name,
++  unit_uid: endpointName(name),
++  model: 'Klipper',
++});
++
++export const moonrakerDraft = (
++  name: string,
++  address: string,
++): MoonrakerDraft | undefined => {
++  const id = name.trim();
++  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$/u.test(id)) return undefined;
++  try {
++    const explicit = address.includes('://');
++    const url = new URL(explicit ? address.trim() : `http://${address.trim()}`);
++    if (
++      !['http:', 'https:'].includes(url.protocol) ||
++      url.username ||
++      url.password ||
++      url.search ||
++      url.hash ||
++      url.pathname !== '/'
++    )
++      return undefined;
++    const suppliedPort = /^(?:\[[^\]]+\]|[^:]+):[0-9]+$/u.test(
++      address.trim().replace(/\/$/u, ''),
++    );
++    if (!explicit && !suppliedPort && !url.port) url.port = '7125';
++    return { name: id, address: url.origin };
++  } catch {
++    return undefined;
++  }
++};
++
++type Endpoint = components['schemas']['ConnectorEndpoint'];
++
++const matches = (row: Endpoint, draft: MoonrakerDraft): boolean =>
++  row.name === endpointName(draft.name) &&
++  row.connector === 'pcma' &&
++  row.address === draft.address &&
++  row.enabled &&
++  row.options?.serial === draft.name &&
++  row.options.unit_uid === endpointName(draft.name) &&
++  row.options.model === 'Klipper' &&
++  Object.keys(row.options).length === 3;
++
++export const addMoonraker = async (
++  client: MoonrakerClient,
++  draft: MoonrakerDraft,
++  signal: AbortSignal,
++) => {
++  try {
++    return await client.putConnectorEndpoint(
++      {
++        path: { name: endpointName(draft.name) },
++        header: { 'If-None-Match': '*' },
++        body: {
++          connector: 'pcma',
++          address: draft.address,
++          enabled: true,
++          options: endpointOptions(draft.name),
++        },
++      },
++      signal,
++    );
++  } catch (error) {
++    if (error instanceof ApiError && error.status !== 412) throw error;
++    let existing: Endpoint | undefined;
++    try {
++      const rows = await client.listConnectorEndpoints({}, signal);
++      existing = rows.items?.find((row) => matches(row, draft));
++    } catch {
++      throw error;
++    }
++    if (existing) return existing;
++    throw error;
++  }
++};
++
++export const updateMoonraker = async (
++  client: MoonrakerClient,
++  previous: MoonrakerDraft,
++  next: MoonrakerDraft,
++  signal: AbortSignal,
++): Promise<void> => {
++  const rows = await client.listConnectorEndpoints({}, signal);
++  if (rows.items?.some((row) => matches(row, next))) return;
++  const current = rows.items?.find((row) => matches(row, previous));
++  if (!current || next.name !== previous.name)
++    throw new Error('The connection changed. Reload before editing it.');
++  await client.putConnectorEndpoint(
++    {
++      path: { name: endpointName(previous.name) },
++      header: { 'If-Match': `"${current.version}"` },
++      body: {
++        connector: current.connector,
++        address: next.address,
++        enabled: true,
++        options: endpointOptions(previous.name),
++      },
++    },
++    signal,
++  );
++};
++
++export const readMoonraker = async (
++  client: MoonrakerClient,
++  name: string,
++  signal: AbortSignal,
++): Promise<components['schemas']['Device'] | undefined> => {
++  let offset = 0;
++  while (!signal.aborted) {
++    const page = await client.listDevices(
++      { query: { search: name, limit: 100, offset } },
++      signal,
++    );
++    const rows = page.items ?? [];
++    const device = rows.find(
++      (row) =>
++        row.driver === 'pcma' &&
++        row.serial === name &&
++        row.unit_uid === endpointName(name),
++    );
++    if (device) return device;
++    offset += rows.length;
++    if (rows.length === 0 || offset >= page.total) return undefined;
++  }
++  return undefined;
++};
++
++export const connectedMoonraker = async (
++  client: MoonrakerClient,
++  name: string,
++  signal: AbortSignal,
++  afterEpoch?: number,
++): Promise<string | undefined> => {
++  const device = await readMoonraker(client, name, signal);
++  return device?.connected &&
++    (afterEpoch === undefined || device.capability_epoch > afterEpoch)
++    ? device.id
++    : undefined;
++};
+diff --git a/frontend/src/lib/stores/moonraker-setup.svelte.test.ts b/frontend/src/lib/stores/moonraker-setup.svelte.test.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/lib/stores/moonraker-setup.svelte.test.ts
+@@ -0,0 +1,143 @@
++import { describe, expect, it } from 'vitest';
++
++import { json, problem, stubClient } from '../../test/stub';
++import { MoonrakerSetup } from './moonraker-setup.svelte';
++
++const draft = { name: 'lab', address: 'http://printer.local:7125' };
++const endpoint = 'PUT /api/v1/connector-endpoints/lab';
++const devices = 'GET /api/v1/devices';
++
++describe('Moonraker setup', () => {
++  it('allows correction of a saved offline address and waits for a new session', async () => {
++    let updated = false;
++    const stub = stubClient({
++      [endpoint]: (call) => {
++        if (call.ifMatch) updated = true;
++        return json(200, {});
++      },
++      'GET /api/v1/connector-endpoints': json(200, {
++        items: [
++          {
++            ...draft,
++            connector: 'pcma',
++            enabled: true,
++            options: { model: 'Klipper', serial: 'lab', unit_uid: 'lab' },
++            version: 'v1',
++          },
++        ],
++      }),
++      [devices]: () =>
++        json(200, {
++          total: 1,
++          items: [
++            {
++              id: 'printer',
++              driver: 'pcma',
++              serial: 'lab',
++              unit_uid: 'lab',
++              connected: updated,
++              capability_epoch: updated ? 2 : 1,
++            },
++          ],
++        }),
++    });
++    const setup = new MoonrakerSetup(stub.client, 40);
++    await setup.connect(draft);
++    expect(setup.phase).toBe('waiting');
++    setup.editAddress();
++    expect(setup.editing).toBe(true);
++    await setup.connect({ ...draft, address: 'http://correct:7125' });
++    expect(setup.draft?.address).toBe('http://correct:7125');
++    expect(setup.phase).toBe('connected');
++    expect(stub.calls.find((call) => call.ifMatch)?.ifMatch).toBe('"v1"');
++    setup.close();
++  });
++  it('waits for a matching live printer and submits once for concurrent clicks', async () => {
++    const stub = stubClient({
++      [endpoint]: json(201, {}),
++      [devices]: json(200, {
++        total: 1,
++        items: [
++          {
++            id: 'connected',
++            serial: 'lab',
++            unit_uid: 'lab',
++            driver: 'pcma',
++            connected: true,
++          },
++        ],
++      }),
++    });
++    const setup = new MoonrakerSetup(stub.client);
++    expect(setup.phase).toBe('idle');
++    const first = setup.connect(draft);
++    expect(setup.busy).toBe(true);
++    expect(setup.connect(draft)).toBe(first);
++    await first;
++    expect(setup.phase).toBe('connected');
++    expect(setup.deviceId).toBe('connected');
++    expect(stub.count(endpoint)).toBe(1);
++    expect(JSON.parse(stub.calls[0]?.body ?? '{}')).toMatchObject({
++      connector: 'pcma',
++      address: draft.address,
++      enabled: true,
++    });
++    setup.close();
++  });
++
++  it('keeps a saved unreachable printer and retries without creating another endpoint', async () => {
++    const stub = stubClient({
++      [endpoint]: json(201, {}),
++      [devices]: json(200, {
++        total: 1,
++        items: [
++          {
++            id: 'offline',
++            serial: 'lab',
++            unit_uid: 'lab',
++            driver: 'pcma',
++            connected: false,
++          },
++        ],
++      }),
++    });
++    const setup = new MoonrakerSetup(stub.client, 30);
++    await setup.connect(draft);
++    expect(setup.saved).toBe(true);
++    expect(setup.phase).toBe('waiting');
++    expect(setup.deviceId).toBeUndefined();
++    await setup.connect(draft);
++    expect(stub.count(endpoint)).toBe(1);
++    setup.close();
++  });
++
++  it('reports refusal without claiming the endpoint was saved', async () => {
++    const stub = stubClient({ [endpoint]: problem(403, 'AUTHZ_FORBIDDEN') });
++    const setup = new MoonrakerSetup(stub.client);
++    await setup.connect(draft);
++    expect(setup.phase).toBe('error');
++    expect(setup.saved).toBe(false);
++    expect(setup.error).toBeDefined();
++    expect(stub.count(devices)).toBe(0);
++    setup.close();
++  });
++
++  it('stops polling on disposal and ignores a response arriving afterwards', async () => {
++    let release = () => undefined;
++    const response = new Promise<Response>((resolve) => {
++      release = () => {
++        resolve(json(201, {}));
++      };
++    });
++    const stub = stubClient({ [endpoint]: () => response });
++    const setup = new MoonrakerSetup(stub.client);
++    const flight = setup.connect(draft);
++    setup.close();
++    release();
++    await flight;
++    expect(setup.saved).toBe(false);
++    expect(stub.count(devices)).toBe(0);
++    await setup.connect(draft);
++    expect(stub.count(endpoint)).toBe(1);
++  });
++});
+diff --git a/frontend/src/lib/stores/moonraker-setup.svelte.ts b/frontend/src/lib/stores/moonraker-setup.svelte.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/lib/stores/moonraker-setup.svelte.ts
+@@ -0,0 +1,154 @@
++import type { ApiError } from '@prusa/connect';
++
++import {
++  addMoonraker,
++  connectedMoonraker,
++  updateMoonraker,
++  readMoonraker,
++  type MoonrakerClient,
++  type MoonrakerDraft,
++} from '../services/moonraker';
++
++type Phase =
++  'idle' | 'saving' | 'connecting' | 'waiting' | 'connected' | 'error';
++
++const pause = (signal: AbortSignal): Promise<void> =>
++  new Promise((resolve) => {
++    const finish = () => {
++      clearTimeout(timer);
++      signal.removeEventListener('abort', finish);
++      resolve();
++    };
++    const timer = setTimeout(finish, 1000);
++    signal.addEventListener('abort', finish, { once: true });
++    if (signal.aborted) finish();
++  });
++
++export class MoonrakerSetup {
++  readonly #client: MoonrakerClient;
++  readonly #timeout: number;
++  #phase = $state<Phase>('idle');
++  #error = $state.raw<ApiError | Error>();
++  #saved = $state.raw<MoonrakerDraft>();
++  #deviceId = $state<string>();
++  #editing = $state(false);
++  #afterEpoch: number | undefined;
++  #flight: Promise<void> | undefined;
++  #controller: AbortController | undefined;
++  #closed = false;
++
++  constructor(client: MoonrakerClient, timeout = 20_000) {
++    this.#client = client;
++    this.#timeout = timeout;
++  }
++
++  get phase() {
++    return this.#phase;
++  }
++  get error() {
++    return this.#error;
++  }
++  get saved() {
++    return this.#saved !== undefined;
++  }
++  get draft() {
++    return this.#saved;
++  }
++  get deviceId() {
++    return this.#deviceId;
++  }
++  get editing() {
++    return this.#editing;
++  }
++
++  editAddress(): void {
++    if (!this.busy && this.#saved && !this.#deviceId && !this.#closed) {
++      this.#editing = true;
++      this.#afterEpoch = undefined;
++      this.#phase = 'idle';
++      this.#error = undefined;
++    }
++  }
++  get busy() {
++    return this.#phase === 'saving' || this.#phase === 'connecting';
++  }
++
++  connect(draft: MoonrakerDraft): Promise<void> {
++    if (this.#closed) return Promise.resolve();
++    this.#flight ??= this.#connect(
++      this.#editing ? draft : (this.#saved ?? draft),
++    ).finally(() => {
++      this.#flight = undefined;
++    });
++    return this.#flight;
++  }
++
++  close(): void {
++    this.#closed = true;
++    this.#controller?.abort();
++  }
++
++  #cancelled(signal: AbortSignal): boolean {
++    return this.#closed || signal.aborted;
++  }
++
++  async #connect(draft: MoonrakerDraft): Promise<void> {
++    const controller = new AbortController();
++    this.#controller = controller;
++    const timer = setTimeout(() => {
++      controller.abort();
++    }, this.#timeout);
++    this.#error = undefined;
++    this.#phase = this.#saved && !this.#editing ? 'connecting' : 'saving';
++    try {
++      if (this.#editing && this.#saved) {
++        if (draft.address !== this.#saved.address) {
++          this.#afterEpoch ??=
++            (await readMoonraker(this.#client, draft.name, controller.signal))
++              ?.capability_epoch ?? 0;
++          await updateMoonraker(
++            this.#client,
++            this.#saved,
++            draft,
++            controller.signal,
++          );
++        }
++        if (this.#closed) return;
++        this.#saved = draft;
++        this.#editing = false;
++      } else if (!this.#saved) {
++        await addMoonraker(this.#client, draft, controller.signal);
++        if (this.#closed) return;
++        this.#saved = draft;
++      }
++      this.#phase = 'connecting';
++      while (!controller.signal.aborted) {
++        const id = await connectedMoonraker(
++          this.#client,
++          draft.name,
++          controller.signal,
++          this.#afterEpoch,
++        );
++        if (this.#cancelled(controller.signal)) break;
++        if (id) {
++          this.#deviceId = id;
++          this.#phase = 'connected';
++          return;
++        }
++        await pause(controller.signal);
++      }
++      if (!this.#closed) this.#phase = 'waiting';
++    } catch (error) {
++      if (this.#closed) return;
++      if (controller.signal.aborted && this.#saved) this.#phase = 'waiting';
++      else {
++        this.#error =
++          error instanceof Error ? error : new Error('Moonraker setup failed');
++        this.#phase = 'error';
++      }
++    } finally {
++      clearTimeout(timer);
++      this.#controller = undefined;
++    }
++  }
++}
+diff --git a/frontend/src/locales/de.json b/frontend/src/locales/de.json
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/locales/de.json
+@@ -0,0 +1,22 @@
++{
++  "app.addPrinter.moonraker.addressHint": "Zum Beispiel drucker.local:7125 oder eine vollständige HTTP- oder HTTPS-Adresse.",
++  "app.addPrinter.moonraker.title": "Moonraker-Drucker verbinden",
++  "app.addPrinter.moonraker.connecting": "Verbindung wird gespeichert; warte auf den Drucker…",
++  "app.addPrinter.prusa": "Prusa",
++  "app.addPrinter.moonraker.connect": "Drucker verbinden",
++  "app.addPrinter.moonraker.description": "Gib die vom Server erreichbare Moonraker-Adresse ein. Das Hinzufügen startet keinen Druck.",
++  "app.addPrinter.moonraker.invalid": "Prüfe Druckername und Adresse. Verwende eine HTTP- oder HTTPS-Adresse ohne Anmeldedaten, Pfad, Abfrage oder Fragment.",
++  "app.addPrinter.moonraker.nameHint": "1–63 Buchstaben, Ziffern, Unterstriche oder Bindestriche. Mit einem Buchstaben oder einer Ziffer beginnen.",
++  "app.addPrinter.moonraker.address": "Moonraker-Adresse",
++  "app.addPrinter.moonraker.open": "Drucker öffnen",
++  "app.addPrinter.moonraker.back": "Zurück zu den Druckern",
++  "app.addPrinter.moonraker.waiting": "Verbindung gespeichert. Der Drucker ist noch nicht verbunden. Prüfe die Adresse und ob Moonraker läuft. Prüfe die Verbindung anschließend erneut.",
++  "app.addPrinter.moonraker.retry": "Erneut prüfen",
++  "app.addPrinter.moonraker.name": "Druckername",
++  "app.addPrinter.moonraker": "Klipper / Moonraker",
++  "app.addPrinter.moonraker.connected": "Drucker verbunden.",
++  "app.addPrinter.connectionType": "Druckerverbindung",
++  "app.addPrinter.attribution": "PrusaConnectMoonrakerAdapter von D3ADD3V3R. Basiert auf Prusa Connect Local von Prusa Research a.s. (prusa3d.com).",
++  "app.addPrinter.moonraker.update": "Adresse speichern",
++  "app.addPrinter.moonraker.edit": "Adresse ändern"
++}
