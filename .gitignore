@@ -22,6 +22,7 @@
 *.3mf
 .env
 .env.*
+**/.pcma-installer-token.json
 *.key
 *.pem
 *.pfx

@@ -211,6 +211,13 @@ exec "$@"
                 assert setup['service']['memory_mib'] == 32
                 assert json.loads(setup['config']['addresses']) == {'existing':['localhost:7125'],'pcma':['localhost:7125']}
                 first_config = config.read_bytes()
+                if auth == 'required':
+                    credential = target_dir / '.pcma-installer-token.json'
+                    assert credential.stat().st_mode & 0o777 == 0o600
+                    assert json.loads(credential.read_text())['token'] == 'isolated-test-token'
+                    assert 'isolated-test-token' not in result.stdout + result.stderr
+                    # An update must work without the one-time input or a terminal.
+                    environment.pop('INSTALL_PC_TOKEN')
                 repeated = subprocess.run(['bash', str(ROOT / 'scripts/install.sh')],
                     env=environment, stdin=subprocess.DEVNULL,
                     capture_output=True, text=True, timeout=15)
@@ -248,6 +255,37 @@ def check_configuration_rules():
                 pass
             else:
                 raise AssertionError('configuration ignored by service was accepted')
+
+    with tempfile.TemporaryDirectory(prefix='token-cache-', dir=ROOT / '.test-run') as name:
+        target = Path(name).resolve()
+        health = 'http://127.0.0.1:8080/api/v1/health'
+        credential = target / '.pcma-installer-token.json'
+        saved = json.dumps({'health_url': health, 'token': 'isolated-saved-token'}).encode()
+        installer.atomic_file(credential, saved)
+        with patch.dict(os.environ, {'INSTALL_PC_TOKEN': ''}), patch.object(installer, 'api_request') as api:
+            # Credentials for one server must never be sent to another.
+            assert installer.access_token(health + '/different', target) == ''
+            assert api.call_args.args[2] == ''
+            assert credential.read_bytes() == saved
+            api.side_effect = installer.urllib.error.HTTPError(health, 401, 'Denied', {}, None)
+            with patch.object(installer.sys.stdin, 'isatty', return_value=False):
+                try:
+                    installer.access_token(health, target)
+                except RuntimeError as error:
+                    assert 'no valid saved installer token' in str(error)
+                else:
+                    raise AssertionError('revoked cached token accepted')
+            assert credential.read_bytes() == saved
+            api.side_effect = None
+            credential.chmod(0o644)
+            api.reset_mock()
+            try:
+                installer.access_token(health, target)
+            except RuntimeError as error:
+                assert 'private' in str(error)
+            else:
+                raise AssertionError('publicly readable token accepted')
+            api.assert_not_called()
 
 
 if __name__ == '__main__':

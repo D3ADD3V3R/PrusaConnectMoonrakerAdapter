@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import shlex
 import signal
+import stat
 import shutil
 import subprocess
 import sys
@@ -51,17 +52,35 @@ def api_request(health, path, token):
         return json.load(response)
 
 
-def access_token(health):
+def access_token(health, target):
+    credential = installation_path(target, '.pcma-installer-token.json')
     token = os.environ.get('INSTALL_PC_TOKEN', '')
+    if not token and credential.exists():
+        fd = os.open(credential, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd, 'r', encoding='utf-8') as stream:
+            info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077
+                    or info.st_uid not in (os.geteuid(), target.stat().st_uid)
+                    or info.st_size > 16384):
+                raise RuntimeError('Installer token file must be private (chmod 600) and owned by the installer or installation user')
+            saved = json.load(stream)
+        if saved.get('health_url') == health:
+            token = saved.get('token', '')
     try:
         api_request(health, 'resources?kind=asset', token)
     except urllib.error.HTTPError as error:
         if error.code not in (401, 403):
             raise
         if not sys.stdin.isatty():
-            raise RuntimeError('Resource read access requires INSTALL_PC_TOKEN') from None
+            raise RuntimeError('Resource read access requires INSTALL_PC_TOKEN; no valid saved installer token is available') from None
+        if token:
+            print('The supplied or saved installer token was rejected; enter a valid replacement.', file=sys.stderr)
         token = getpass.getpass('PC API token with permission to view resources: ')
         api_request(health, 'resources?kind=asset', token)
+    if token:
+        owner = target.stat()
+        atomic_file(credential, json.dumps({'health_url': health, 'token': token}).encode('utf-8'),
+                    mode=0o600, owner=(owner.st_uid, owner.st_gid))
     return token
 
 
@@ -326,7 +345,7 @@ def main():
             if os.environ.get('INSTALL_PREPARE_ONLY') == '1':
                 print('Preparation passed; no live configuration, service or binary changed.')
                 return
-            token = access_token(health)
+            token = access_token(health, target)
             if os.geteuid() != 0:
                 if run('sudo', '-n', 'true', check=False).returncode:
                     run('sudo', '-v')
