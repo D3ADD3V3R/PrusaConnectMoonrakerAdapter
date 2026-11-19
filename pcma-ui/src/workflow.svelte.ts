@@ -125,16 +125,21 @@ export class FilamentWorkflow {
       try {
         const currentAssignment = await this.#service.assignment();
         if (!sameAssignment(ready, currentAssignment)) {
+          const beforeIdentity = ready.before;
+          const unchangedIdentity =
+            (currentAssignment === null && beforeIdentity === null) ||
+            (currentAssignment !== null &&
+              beforeIdentity !== null &&
+              currentAssignment.material_uuid === beforeIdentity.material &&
+              currentAssignment.spool_id === beforeIdentity.spool);
           const reportedConfirmation =
             currentAssignment?.by === 'printer' &&
-            currentAssignment.type === ready.target.type &&
+            (
+              currentAssignment.type || currentAssignment.abbreviation
+            ).toUpperCase() === ready.target.type &&
             currentAssignment.color_rgba.slice(0, 7).toUpperCase() ===
               ready.target.color;
-          if (
-            !reportedConfirmation &&
-            JSON.stringify(assignmentStamp(currentAssignment)) !==
-              JSON.stringify(ready.before)
-          )
+          if (!unchangedIdentity && !reportedConfirmation)
             throw new WorkflowError('pcma.assignmentChanged');
           // Recheck the request after the catalogue reads; an old confirmation is not a new one.
           if (!confirmed(ready, await this.#service.device())) return;

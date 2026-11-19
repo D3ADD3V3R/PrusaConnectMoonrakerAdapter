@@ -18,10 +18,12 @@ func TestConfirmedFilamentMetadataIsReportedAndUnknownClearsIt(t *testing.T) {
 		values[patch.Path] = string(patch.Value)
 	}
 	require.Equal(t, `"PETG"`, values[connectorapi.ToolPath("0", connectorapi.MaterialAbbreviation)])
+	require.Equal(t, `"PETG"`, values[connectorapi.ToolPath("0", connectorapi.MaterialType)])
+	require.Equal(t, `"PETG"`, values[connectorapi.ToolPath("0", connectorapi.MaterialType)])
 	require.Equal(t, `"#FF8000"`, values[connectorapi.ToolPath("0", connectorapi.MaterialColor)])
 	patches = r.patchesFrom(reading(`{"gcode_macro PCMA_STATE":{"loaded_material":"UNKNOWN","loaded_color":"UNKNOWN"}}`, t), time.Now())
 	for _, patch := range patches {
-		if patch.Path == connectorapi.ToolPath("0", connectorapi.MaterialAbbreviation) || patch.Path == connectorapi.ToolPath("0", connectorapi.MaterialColor) {
+		if patch.Path == connectorapi.ToolPath("0", connectorapi.MaterialAbbreviation) || patch.Path == connectorapi.ToolPath("0", connectorapi.MaterialType) || patch.Path == connectorapi.ToolPath("0", connectorapi.MaterialColor) {
 			require.Equal(t, `null`, string(patch.Value))
 		}
 	}

@@ -85,7 +85,7 @@ const world = () => {
         '/pcma/change_id': id,
         '/pcma/confirmed_change_id': id,
         '/pcma/filament_phase': 'CONFIRMED',
-        '/pcma/loaded_material': target.type,
+        '/pcma/loaded_material': chosen.type,
         '/pcma/loaded_color': 'C_FF8000',
       };
     },
@@ -104,16 +104,121 @@ const world = () => {
     targetChanged: () => {
       chosen = { ...chosen, color: '#000000' };
     },
+    targetType: (type: string) => { chosen = { ...chosen, type }; },
     replaceAssignment: (record: ChangeRecord) => {
       current = assigned({
         ...record,
         target: { ...record.target, material: 'different-material', spool: 37 },
       });
     },
+    current: (assignment: Assignment | null) => {
+      current = assignment;
+    },
   };
 };
 
 describe('filament workflow', () => {
+  it('does not copy Materials alias rules when a confirmed change keeps the original assignment identity', async () => {
+    const held = world();
+    held.targetType('WOOD');
+    const before: Assignment = {
+      device_id: 'printer-1',
+      tool_id: '0',
+      material_uuid: 'old-pla',
+      material_source: 'catalogue',
+      material_name: 'PLA',
+      brand_name: '',
+      type: 'PLA',
+      abbreviation: 'PLA',
+      color_rgba: '#000000FF',
+      spool_id: 99,
+      by: 'person',
+      updated_at: '2026-11-18T00:00:00Z',
+    };
+    held.current(before);
+    const workflow = new FilamentWorkflow(held.service, 'printer-1');
+    await workflow.start({ material: target.material });
+    held.confirm(workflow.pending!.id);
+    held.current({ ...before, updated_at: '2026-11-19T00:00:00Z' });
+    await workflow.reconcile();
+    expect(workflow.error).toBeUndefined();
+    expect(held.calls).toContain('assign');
+  });
+  it('accepts a printer report timestamp refresh while Materials keeps the original person-selected color', async () => {
+    const held = world();
+    const before: Assignment = {
+      device_id: 'printer-1',
+      tool_id: '0',
+      material_uuid: 'old-color',
+      material_source: 'catalogue',
+      material_name: 'Black',
+      brand_name: '',
+      type: target.type,
+      abbreviation: target.type,
+      color_rgba: '#000000FF',
+      spool_id: 99,
+      by: 'person',
+      updated_at: '2026-11-18T00:00:00Z',
+    };
+    held.current(before);
+    const workflow = new FilamentWorkflow(held.service, 'printer-1');
+    await workflow.start({ material: target.material });
+    held.confirm(workflow.pending!.id);
+    held.current({ ...before, updated_at: '2026-11-19T00:00:00Z' });
+    await workflow.reconcile();
+    expect(workflow.error).toBeUndefined();
+    expect(held.calls).toContain('assign');
+  });
+  it('accepts a confirmed printer refresh that reports the abbreviation without a separate material type', async () => {
+    const held = world();
+    const workflow = new FilamentWorkflow(held.service, 'printer-1');
+    await workflow.start({ material: target.material });
+    const record = workflow.pending!;
+    held.confirm(record.id);
+    const report = assigned(record);
+    delete report.spool_id;
+    held.current({
+      ...report,
+      material_uuid: '',
+      type: '',
+      abbreviation: target.type,
+      by: 'printer',
+    });
+    await workflow.reconcile();
+    expect(workflow.error).toBeUndefined();
+    expect(held.calls).toContain('assign');
+  });
+  it('accepts a confirmed printer refresh of an existing person assignment while protecting its identity', async () => {
+    const held = world();
+    const before: Assignment = {
+      device_id: 'printer-1',
+      tool_id: '0',
+      material_uuid: 'old',
+      material_source: 'catalogue',
+      material_name: 'Old spool',
+      brand_name: '',
+      type: 'PLA',
+      abbreviation: 'PLA',
+      color_rgba: '#000000FF',
+      spool_id: 99,
+      by: 'person',
+      updated_at: '2026-11-18T00:00:00Z',
+    };
+    held.current(before);
+    const workflow = new FilamentWorkflow(held.service, 'printer-1');
+    await workflow.start({ material: target.material });
+    held.confirm(workflow.pending!.id);
+    held.current({
+      ...before,
+      type: target.type.toLowerCase(),
+      abbreviation: target.type,
+      color_rgba: target.color,
+      updated_at: '2026-11-19T00:00:00Z',
+    });
+    await workflow.reconcile();
+    expect(workflow.error).toBeUndefined();
+    expect(held.calls).toContain('assign');
+  });
   it('does not overwrite a Materials assignment changed independently after the request', async () => {
     const held = world();
     const workflow = new FilamentWorkflow(held.service, 'printer-1');

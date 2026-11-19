@@ -38,6 +38,9 @@ func confirmedFilamentPatches(fields map[string]json.RawMessage) []connectorapi.
 			}
 		}
 		out = append(out, connectorapi.StatePatch{Path: connectorapi.ToolPath("0", item.member), Value: encoded})
+		if item.field == "loaded_material" {
+			out = append(out, connectorapi.StatePatch{Path: connectorapi.ToolPath("0", connectorapi.MaterialType), Value: encoded})
+		}
 	}
 	return out
 }
