@@ -17,9 +17,10 @@ go build -trimpath -tags "$tags" \
 mv -- "$root/bin/prusa-connect-pcma.new" "$root/bin/prusa-connect-pcma"
 cd "$root/adapter"
 go build -trimpath -o "$root/bin/pcma-prepare" ./cmd/pcma-prepare
+go build -trimpath -o "$root/bin/pcma-profile" ./cmd/pcma-profile
 go build -trimpath -o "$root/bin/moonraker-sim" ./cmd/moonraker-sim
 cd "$root/bin"
-sha256sum prusa-connect-pcma pcma-prepare moonraker-sim > SHA256SUMS
+sha256sum prusa-connect-pcma pcma-prepare pcma-profile moonraker-sim > SHA256SUMS
 go version -m prusa-connect-pcma > BUILDINFO.txt
 printf '%s\n' "$BUILD_VERSION" > VERSION
 cat SHA256SUMS

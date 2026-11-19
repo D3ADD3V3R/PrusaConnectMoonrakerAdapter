@@ -35,6 +35,8 @@ core:
 
 Die Profilbindung gilt je Connectorinstanz. Unterschiedliche Profile brauchen getrennte Instanzen. Der Drucker-Endpunkt wird über die native PC-Endpunktverwaltung angelegt. `unit_uid` muss eine stabile physische Identität tragen, wenn sich die IP ändern kann.
 
+Ein Konfigurationsprofil lässt sich mit `pcma-profile` aus dem verbundenen Drucker erzeugen. Die Anleitung im Haupt-README beschreibt den Aufruf und `capability_profile_path`. Das Profil begrenzt die angebotenen Adapterbefehle anhand der Konfiguration; es ersetzt keine technische Druckfreigabe. Die Laufzeitprüfung und die Schalter `uploads` und `starts` gelten weiterhin.
+
 Start wird nur angeboten, wenn Upload, Cancel, ein einzelner Extruder, `save_variables` und der Makro-Vertrag Version 1 vorhanden sind. Der reale Drucker hat diese PCMA-Makros bisher noch nicht. Der genaue Status- und ACK-Vertrag steht in `../klipper/adapter-contract.md`.
 
 Eine freigegebene Datei wird vor ihrem Upload vorbereitet. Unter Windows beispielsweise so aufrufen.
@@ -59,13 +61,13 @@ Benötigt werden Git, Python 3 und Go 1.26.11. `dev.ps1` nutzt die projektlokale
 
 `test` führt die übernommenen Tests, die SDK-Conformance-Suiten, Datei-, Artefakt- und Ausführungsprüfungen sowie `go vet` aus. Getestet werden unter anderem beschädigte Uploads, Pfadwechsel, unveränderliche Artefakte, gleichzeitige Reservierungen, verlorene Start-ACKs, Wiederöffnung des Journals, unbekannte Starts, Materialpausen und verspätete Bettfreigaben.
 
-`build` erzeugt den Simulator, das Vorbereitungswerkzeug und den Windows-PC-Build unter `bin`. `smoke` startet eine isolierte PC-Instanz mit eigener temporärer Datenbank auf Loopback. Er prüft über native PC-APIs Geräteanlage, Dateiansicht, Upload und Druckstart. Die simulierte Materialpause muss dabei dieselbe Ausführung und `PRINT_ONGOING` behalten. Reguläres Resume wird in dieser Phase abgewiesen. Testprozesse und temporäre Daten werden danach entfernt.
+`build` erzeugt den Simulator, den Profilgenerator, das Vorbereitungswerkzeug und den Windows-PC-Build unter `bin`. `smoke` startet eine isolierte PC-Instanz mit eigener temporärer Datenbank auf Loopback. Er prüft über native PC-APIs Geräteanlage, Dateiansicht, Upload und Druckstart. Die simulierte Materialpause muss dabei dieselbe Ausführung und `PRINT_ONGOING` behalten. Reguläres Resume wird in dieser Phase abgewiesen. Testprozesse und temporäre Daten werden danach entfernt.
 
 ## Build und Installation auf PrinterFarmHost
 
-Der native ARM64-Build mit eingebetteter Weboberfläche, `make smoke` mit Simulator sowie `make test` einschließlich `go vet` wurden auf PrinterFarmHost erfolgreich abgeschlossen. Die drei Binärdateien liegen unter `bin`; `SHA256SUMS`, `BUILDINFO.txt` und `VERSION` dokumentieren den Build.
+Der native ARM64-Build mit eingebetteter Weboberfläche, `make smoke` mit Simulator sowie `make test` einschließlich `go vet` wurden auf PrinterFarmHost erfolgreich abgeschlossen. Die vier Binärdateien liegen unter `bin`; `SHA256SUMS`, `BUILDINFO.txt` und `VERSION` dokumentieren den Build.
 
-Der Distributionsstand `0.1.0-beta.1+pcma.0.3.2` ergänzt unter „Add a Printer“ die Auswahl „Klipper / Moonraker“. Nach einmaliger Aktivierung einer Connectorinstanz namens `pcma` lassen sich Drucker dort mit Namen und Adresse hinzufügen. Die Einrichtung nutzt die Browser-Sitzung, unterscheidet gespeicherte und tatsächlich verbundene Geräte und bietet eine gegen die Serverversion geprüfte Adresskorrektur. Der Quellpatch liegt unter `../deploy/rpi/upstream.patch`.
+Der Distributionsstand `0.1.0-beta.1+pcma.0.3.3` ergänzt unter „Add a Printer“ die Auswahl „Klipper / Moonraker“. Nach einmaliger Aktivierung einer Connectorinstanz namens `pcma` lassen sich Drucker dort mit Namen und Adresse hinzufügen. Die Einrichtung nutzt die Browser-Sitzung, unterscheidet gespeicherte und tatsächlich verbundene Geräte und bietet eine gegen die Serverversion geprüfte Adresskorrektur. Der Quellpatch liegt unter `../deploy/rpi/upstream.patch`.
 
 Der separate Quellstand liegt auf dem Pi unter `/home/administrator/pcma-build`, die bisherige Installation unter `/home/administrator/prusa-connect`. Makefile und Skripte werden lokal unter `../deploy/rpi` gepflegt. Die dortige README beschreibt `make`, `make test`, `make smoke` und `make install` sowie Sicherung, Dienstneustart und automatische Rücksicherung bei fehlgeschlagener Gesundheitsprüfung. Das Installationsskript wurde mit einem isolierten Dienstmodell einschließlich Rücksicherung geprüft.
 

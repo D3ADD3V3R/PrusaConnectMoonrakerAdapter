@@ -9,8 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CORE = ROOT / 'upstream/prusa-connect'
 TARGET = ROOT / 'deploy/rpi/upstream.patch'
 
-tracked = subprocess.check_output(['git', '-C', str(CORE), 'diff', '--binary', 'HEAD', '--', 'frontend/src', 'docs/changes'])
-files = subprocess.check_output(['git', '-C', str(CORE), 'ls-files', '--others', '--exclude-standard', '--', 'frontend/src', 'docs/changes']).decode().splitlines()
+scopes = ['frontend/src', 'packages/svelte/src/shell/printer-detail/controls', 'packages/svelte/src/i18n/catalogues.ts', 'packages/svelte/locales', 'internal/app/connectors.go', 'internal/app/connectors_test.go', 'docs/changes']
+tracked = subprocess.check_output(['git', '-C', str(CORE), 'diff', '--binary', 'HEAD', '--', *scopes])
+files = subprocess.check_output(['git', '-C', str(CORE), 'ls-files', '--others', '--exclude-standard', '--', *scopes]).decode().splitlines()
 parts = [tracked.decode().replace('\r\n', '\n')]
 for relative in sorted(files):
     path = CORE / relative

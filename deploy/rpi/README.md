@@ -12,11 +12,11 @@ make
 make install
 ```
 
-`make` richtet bei Bedarf Go 1.26.11, Node 24.22.3 und pnpm 11.3.0 unter `.tools` ein. Go- und Node-Archive werden mit den hinterlegten offiziellen SHA-256-Prüfsummen geprüft. Der Prusa-Kern ist auf Commit `b194cb83b682822e95e839a3cecf4391f3929e87` gepinnt. Der Build umfasst das eingebettete PC-Webfrontend, den PCMA-Connector und das Vorbereitungswerkzeug. Die Ergebnisse liegen unter `bin`.
+`make` richtet bei Bedarf Go 1.26.11, Node 24.22.3 und pnpm 11.3.0 unter `.tools` ein. Go- und Node-Archive werden mit den hinterlegten offiziellen SHA-256-Prüfsummen geprüft. Der Prusa-Kern ist auf Commit `b194cb83b682822e95e839a3cecf4391f3929e87` gepinnt. Der Build umfasst das eingebettete PC-Webfrontend, den PCMA-Connector, das Vorbereitungswerkzeug und den Profilgenerator. Die Ergebnisse liegen unter `bin`.
 
 Der Build verwendet einen Go-Prozess und begrenzte Go-/Node-Speichereinstellungen für den Pi mit etwa 1 GB RAM. Temporäre Dateien und Caches liegen auf der SD-Karte im Build-Verzeichnis. Der erste Build lädt die gepinnten Abhängigkeiten und benötigt entsprechend Zeit.
 
-Die Build-Version lautet `0.1.0-beta.1+pcma.0.3.2`. Der öffentliche Update-Prüfschlüssel wurde aus den Build-Metadaten der vorhandenen offiziellen Binary übernommen. Der Dokumentationslink verweist auf die zugrunde liegende PC-Beta-Version.
+Die Build-Version lautet `0.1.0-beta.1+pcma.0.3.3`. Der öffentliche Update-Prüfschlüssel wurde aus den Build-Metadaten der vorhandenen offiziellen Binary übernommen. Der Dokumentationslink verweist auf die zugrunde liegende PC-Beta-Version.
 
 Wie die vorhandene Release-Binary verwendet der Build `CGO_ENABLED=0` und die Tags `full`, `diagnostics`, `observability` und `postgres`.
 

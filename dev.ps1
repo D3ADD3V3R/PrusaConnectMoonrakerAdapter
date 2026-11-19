@@ -31,6 +31,8 @@ try {
         & $goExecutable vet ./...
         if ($LASTEXITCODE -ne 0) { throw 'Go vet failed.' }
     } else {
+        & $goExecutable build -o ../bin/pcma-profile.exe ./cmd/pcma-profile
+        if ($LASTEXITCODE -ne 0) { throw 'Capability profile generator build failed.' }
         & $goExecutable build -o ../bin/pcma-prepare.exe ./cmd/pcma-prepare
         if ($LASTEXITCODE -ne 0) { throw 'Artifact preparation build failed.' }
         & $goExecutable build -o ../bin/moonraker-sim.exe ./cmd/moonraker-sim

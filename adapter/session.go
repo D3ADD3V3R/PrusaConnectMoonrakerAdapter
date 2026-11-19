@@ -67,6 +67,7 @@ func (l liveness) orShipping() liveness {
 type Session struct {
 	executions      *executionRuntime
 	objects         []string
+	configuration   configDump
 	contractVersion int
 	files           fileState
 	uploads         uploadState
@@ -168,6 +169,7 @@ func (s *Session) handshake(ctx context.Context, offered connectorapi.Set) (conn
 	}
 
 	heaters := heaterBounds(dumped)
+	s.configuration = dumped
 
 	var opening statusReply
 	if err = s.callSync(ctx, methodObjectsSubscribe, objectsParam(s.asked), &opening); err != nil {

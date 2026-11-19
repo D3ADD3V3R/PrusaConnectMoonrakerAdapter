@@ -94,6 +94,7 @@ def main():
                 'discovery': {'enabled': False},
                 'connectors': {'pcma': {'type': 'pcma-moonraker', 'config': {
                     'uploads': True, 'starts': True, 'state_path': str(work / 'executions.db'),
+                    'capability_profile_path': str(work / 'capabilities.json'),
                     'profile_id': 'ender3', 'profile_version': 'v1', 'materials': ['PLA', 'PETG'],
                 }}},
             },
@@ -112,6 +113,13 @@ def main():
                     [str(simulator), '-addr', f'127.0.0.1:{sim_port}', '-hostname', 'pcma-sim', '-pcma'],
                     cwd=work, stdout=log, stderr=log, creationflags=flags,
                 ))
+                sim_base = f'http://127.0.0.1:{sim_port}'
+                wait_for(lambda: request(sim_base, '/server/files/roots'), processes)
+                report = json.loads(subprocess.check_output([
+                    str(executable('pcma-profile')), '-address', sim_base, '-model', 'Klipper',
+                    '-uploads', '-output', str(work / 'capabilities.json'),
+                ], creationflags=flags))
+                assert report['heaters']['extruder']['max_temp'] == 300, report
                 processes.append(subprocess.Popen(
                     [str(binary), 'core', '--config', str(config_path)],
                     cwd=work, stdout=log, stderr=log, creationflags=flags,
@@ -145,6 +153,7 @@ def main():
                 details = request(base, f"/api/v1/devices/{device['id']}")
                 assert 'core.command.start_print' in details['capabilities'], details
                 assert 'core.feature.file_upload' in details['capabilities'], details
+                assert details['profile_matched'], details
                 device_base = f"/api/v1/devices/{device['id']}"
 
                 def listed_file(relative, expected):
@@ -173,6 +182,7 @@ def main():
                 assert not resumed['ok'], resumed
                 print(json.dumps({'result': 'PASS', 'driver': device['driver'],
                                   'model': device['model'], 'serial': device['serial'],
+                                  'configuration_profile_matched': 'PASS',
                                   'file_listing': 'PASS', 'native_upload': 'PASS',
                                   'native_start': 'PASS', 'material_pause_same_execution': 'PASS'}))
             except BaseException:

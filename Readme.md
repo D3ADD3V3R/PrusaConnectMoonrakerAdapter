@@ -19,6 +19,7 @@ PrusaConnectMoonrakerAdapter connects Klipper printers through Moonraker to Prus
 - Reconciliation after lost start acknowledgements and connection loss
 - Material-change status and generation-bound bed confirmations
 - A Prusa / Klipper-Moonraker choice in Add a Printer, with address entry and connection status
+- A configuration profile generator and coordinate readings without motion controls
 - A separate Raspberry Pi build directory and an installer with backup, health checks and rollback
 
 The real Klipper macros and LCD workflow are still required before enabling PCMA print starts. The simulator implements the macro contract for testing. The production queue, dedicated PCMA status UI and supervised hardware acceptance remain separate integration work.
@@ -39,7 +40,7 @@ The build downloads Prusa Connect at commit `b194cb83b682822e95e839a3cecf4391f39
 
 | Command | Purpose |
 | --- | --- |
-| `make` | Build PC, the preparation tool and simulator |
+| `make` | Build PC, the preparation tool, profile generator and simulator |
 | `make test` | Run adapter tests and Go vet |
 | `make smoke` | Test an isolated PC instance and simulator, including the embedded web assets |
 | `make check-install` | Exercise installation and rollback with an isolated service model |
@@ -69,6 +70,20 @@ core:
 Restart PC once after changing its connector declarations. Open **Add a Printer**, select **Klipper / Moonraker**, and enter a unique printer name and the Moonraker address, such as `printer.local:7125`. The page uses the signed-in browser session; no copied API token is needed. Saving the address and establishing a live printer connection are reported separately.
 
 Moonraker API-key authentication is not implemented in this adapter version. Print-start activation also needs an approved compatibility profile, a durable journal and the required Klipper macros; see the adapter documentation.
+
+## Generate a capability profile
+
+After building, read the printer's active configuration with the supplied tool:
+
+```sh
+./bin/pcma-profile -address http://printer.local:7125 -model Klipper -uploads -output /home/administrator/klipper-capabilities.json
+```
+
+The tool reads configuration, object availability and status. It sends no heater, motion or print commands. The new output file contains the profile registry; standard output contains selected configuration evidence and its SHA-256. Keep printer-specific files outside this repository. The model label must match the endpoint's model option.
+
+Set `core.connectors.pcma.config.capability_profile_path` to the absolute output path, then restart PC. The patched host validates the registry with its existing profile loader. A matching profile removes `no_capability_profile`; live probing and connector policy still restrict the accepted commands. `uploads: false` and `starts: false` retain their effect.
+
+Generation currently supports one extruder. Heater limits come from explicit configuration values. The firmware range begins at the observed version and ends before the next patch release; regenerate after firmware or configuration changes. This profile describes implemented adapter commands and does not approve a machine for unattended printing. Motion commands remain unavailable; coordinates can be displayed as readings.
 
 ## Source layout
 

@@ -146,6 +146,233 @@ index 313869d..165c9d8 100644
 +  "app.addPrinter.moonraker.update": "Save address",
 +  "app.addPrinter.moonraker.edit": "Edit address"
  }
+diff --git a/internal/app/connectors.go b/internal/app/connectors.go
+index cd821e1..6c6c8f3 100644
+--- a/internal/app/connectors.go
++++ b/internal/app/connectors.go
+@@ -128,6 +128,11 @@ type profiled interface {
+ 	Profiles() (profile.Registry, error)
+ }
+ 
++// jsonProfiled lets an external module supply profile data without importing an internal host package.
++type jsonProfiled interface {
++	CapabilityProfilesJSON() ([]byte, error)
++}
++
+ // mountConnectors builds the drivers configuration names and returns the routes
+ // a printer dials.
+ //
+@@ -705,6 +710,19 @@ func printerAdmission(tables []admissionTable) string {
+ func resolverFor(driver connectorapi.Driver, log *slog.Logger) (*capability.Resolver, error) {
+ 	shipped, carries := driver.(profiled)
+ 	if !carries {
++		if external, ok := driver.(jsonProfiled); ok {
++			data, err := external.CapabilityProfilesJSON()
++			if err != nil {
++				return nil, err
++			}
++			if len(data) != 0 {
++				profiles, err := profile.Load(data)
++				if err != nil {
++					return nil, err
++				}
++				return capability.NewResolver(profiles, log), nil
++			}
++		}
+ 		return capability.NewResolver(profile.Registry{}, log), nil
+ 	}
+ 
+diff --git a/internal/app/connectors_test.go b/internal/app/connectors_test.go
+index 4f4b072..d777967 100644
+--- a/internal/app/connectors_test.go
++++ b/internal/app/connectors_test.go
+@@ -38,6 +38,28 @@ type baselineDriver struct {
+ 
+ func (d baselineDriver) Baseline() connectorapi.Set { return d.baseline.Clone() }
+ 
++type jsonProfileDriver struct {
++	baselineDriver
++	data []byte
++}
++
++func (d jsonProfileDriver) CapabilityProfilesJSON() ([]byte, error) { return d.data, nil }
++
++func TestExternalJSONProfilesUseTheValidatedLoader(t *testing.T) {
++	baseline := connectorapi.Set{statusVerb: {Flag: true, Kind: connectorapi.KindFlag}}
++	data, err := json.Marshal(map[string]any{"schema": 1, "profiles": []map[string]any{{"model": "Klipper", "firmware": map[string]string{"from": "0.13.0-0", "to": "0.13.1-0"}, "capabilities": baseline}}})
++	require.NoError(t, err)
++	driver := jsonProfileDriver{baselineDriver{baseline}, data}
++	resolver, err := resolverFor(driver, discard())
++	require.NoError(t, err)
++	resolved := resolver.Arrive(t.Context(), baseline, connectorapi.Identity{Model: "Klipper", Firmware: connectorapi.NewFirmwareLabel("0.13.0-827-g29d4ec2d")}, nil)
++	require.True(t, resolved.ProfileMatched)
++	require.True(t, resolved.Capabilities.Has(statusVerb))
++	driver.data = []byte(`{"schema":999,"profiles":[]}`)
++	_, err = resolverFor(driver, discard())
++	require.Error(t, err)
++}
++
+ // TestADriverIsResolvedAgainstItsOwnProfilesAndNobodyElses is the defect this
+ // wiring exists to stop.
+ //
+diff --git a/packages/svelte/locales/de.json b/packages/svelte/locales/de.json
+index 4065351..a54b77b 100644
+--- a/packages/svelte/locales/de.json
++++ b/packages/svelte/locales/de.json
+@@ -386,5 +386,6 @@
+   "setupWizard.welcome.pointLocal": "Deine Drucker und Dateien bleiben in deinem Netzwerk.",
+   "setupWizard.welcome.pointTime": "Die Einrichtung dauert etwa zwei Minuten.",
+   "setupWizard.welcome.start": "Einrichtung starten",
+-  "setupWizard.welcome.title": "Willkommen bei Prusa Connect"
++  "setupWizard.welcome.title": "Willkommen bei Prusa Connect",
++  "printerDetailControls.motion.readOnly": "Positionsanzeige. Über diese Verbindung sind keine Bewegungsbefehle verfügbar."
+ }
+diff --git a/packages/svelte/locales/en.printerDetailControls.json b/packages/svelte/locales/en.printerDetailControls.json
+index 6a6e473..33d6773 100644
+--- a/packages/svelte/locales/en.printerDetailControls.json
++++ b/packages/svelte/locales/en.printerDetailControls.json
+@@ -69,5 +69,6 @@
+   "printerDetailControls.utilities.calibration": "Calibration",
+   "printerDetailControls.utilities.heading": "Utilities",
+   "printerDetailControls.utilities.state": "State",
+-  "printerDetailControls.utilities.system": "System"
++  "printerDetailControls.utilities.system": "System",
++  "printerDetailControls.motion.readOnly": "Position readings only. This connection does not offer motion controls."
+ }
+diff --git a/packages/svelte/src/shell/printer-detail/controls/machine-motion.svelte b/packages/svelte/src/shell/printer-detail/controls/machine-motion.svelte
+index f958f06..98a3c19 100644
+--- a/packages/svelte/src/shell/printer-detail/controls/machine-motion.svelte
++++ b/packages/svelte/src/shell/printer-detail/controls/machine-motion.svelte
+@@ -69,6 +69,11 @@
+     return parts.length === 0 ? undefined : parts.join(' · ');
+   });
+   const z = $derived(millimetres(reading(AXIS_Z_PATH), 2));
++  const positions = $derived([
++    { axis: 'X', value: millimetres(reading(AXIS_X_PATH), 1) },
++    { axis: 'Y', value: millimetres(reading(AXIS_Y_PATH), 1) },
++    { axis: 'Z', value: z },
++  ]);
+ 
+   const jogXy = (axis: 'x' | 'y', direction: 1 | -1) =>
+     onCommand(VERBS.move, {
+@@ -108,13 +113,29 @@
+   </span>
+ {/snippet}
+ 
+-<section class="flex flex-col gap-4 @2xl:col-start-1 @2xl:row-start-1">
++<section
++  class="flex flex-col gap-4 @2xl:col-start-1 @2xl:row-start-1"
++  aria-label={t('printerDetailControls.motion.heading')}
++>
+   <h3 class={SECTION_TITLE}>
+     <ZAxisIcon aria-hidden="true" class="size-4 text-muted-foreground" />
+     {t('printerDetailControls.motion.heading')}
+   </h3>
+ 
+-  {#if move.kind !== 'absent' || moveZ.kind !== 'absent'}
++  {#if move.kind === 'absent' && moveZ.kind === 'absent'}
++    <div class="flex flex-wrap gap-4">
++      {#each positions as position (position.axis)}
++        {@render axisLabel(
++          `${uid}-${position.axis}`,
++          position.axis,
++          position.value ?? t('printerDetailControls.noReading'),
++        )}
++      {/each}
++    </div>
++    <p class="text-xs text-muted-foreground">
++      {t('printerDetailControls.motion.readOnly')}
++    </p>
++  {:else}
+     <div class="flex flex-col gap-1">
+       <span id="{uid}-step" class="text-xs font-medium text-muted-foreground">
+         {t('printerDetailControls.jog.step')}
+diff --git a/packages/svelte/src/shell/printer-detail/controls/printer-controls-panel.stories.svelte b/packages/svelte/src/shell/printer-detail/controls/printer-controls-panel.stories.svelte
+index a28a452..a742fd6 100644
+--- a/packages/svelte/src/shell/printer-detail/controls/printer-controls-panel.stories.svelte
++++ b/packages/svelte/src/shell/printer-detail/controls/printer-controls-panel.stories.svelte
+@@ -208,6 +208,25 @@
+   />
+ </Story>
+ 
++<Story name="Coordinates Without Motion" asChild>
++  <PrinterControlsPanel
++    device={printer('IDLE', [
++      'core.command.set_nozzle_temperature',
++      'core.command.set_bed_temperature',
++    ])}
++    telemetry={readings()}
++    {commands}
++  />
++</Story>
++
++<Story name="Coordinates Not Reported" asChild>
++  <PrinterControlsPanel
++    device={printer('IDLE', ['core.command.set_nozzle_temperature'])}
++    telemetry={{ value: () => undefined, points: () => [] }}
++    {commands}
++  />
++</Story>
++
+ <!-- A row per head, each with its own target and the nozzle it reports. -->
+ <Story name="Tool Changer" asChild>
+   <PrinterControlsPanel
+diff --git a/packages/svelte/src/shell/printer-detail/controls/printer-controls-panel.svelte.test.ts b/packages/svelte/src/shell/printer-detail/controls/printer-controls-panel.svelte.test.ts
+index 0503215..5666c58 100644
+--- a/packages/svelte/src/shell/printer-detail/controls/printer-controls-panel.svelte.test.ts
++++ b/packages/svelte/src/shell/printer-detail/controls/printer-controls-panel.svelte.test.ts
+@@ -83,6 +83,51 @@ afterEach(() => {
+ });
+ 
+ describe('PrinterControlsPanel', () => {
++  it('shows reported coordinates without offering unsupported motion commands', async () => {
++    const onCommand = vi.fn();
++    await render(PrinterControlsPanel, {
++      props: props({
++        device: printer('IDLE', [
++          'core.command.set_nozzle_temperature',
++          'core.command.set_bed_temperature',
++        ]),
++        commands: { onCommand },
++      }),
++    });
++    const coordinates = page.getByRole('region', { name: 'Coordinates' });
++    await expect
++      .element(coordinates.getByText('120.5 mm', { exact: true }))
++      .toBeVisible();
++    await expect
++      .element(coordinates.getByText('90.3 mm', { exact: true }))
++      .toBeVisible();
++    await expect
++      .element(coordinates.getByText('4.20 mm', { exact: true }))
++      .toBeVisible();
++    await expect
++      .element(page.getByRole('button', { name: 'Move X left' }))
++      .not.toBeInTheDocument();
++    await expect
++      .element(page.getByRole('button', { name: 'Home', exact: true }))
++      .not.toBeInTheDocument();
++    expect(onCommand).not.toHaveBeenCalled();
++  });
++
++  it('keeps missing coordinate readings distinct from zero', async () => {
++    await render(PrinterControlsPanel, {
++      props: props({
++        device: printer('IDLE', ['core.command.set_nozzle_temperature']),
++        telemetry: { value: () => undefined, points: () => [] },
++      }),
++    });
++    const coordinates = page.getByRole('region', { name: 'Coordinates' });
++    await expect
++      .element(coordinates.getByText('No reading yet').nth(2))
++      .toBeVisible();
++    await expect
++      .element(coordinates.getByText('0.0 mm', { exact: true }))
++      .not.toBeInTheDocument();
++  });
+   it('sends a relative jog of the chosen step, at the pad feedrate', async () => {
+     const onCommand = vi.fn();
+     await render(PrinterControlsPanel, {
 diff --git a/docs/changes/20261118-223000-moonraker-printer-setup.md b/docs/changes/20261118-223000-moonraker-printer-setup.md
 new file mode 100644
 --- /dev/null
@@ -154,6 +381,15 @@ new file mode 100644
 +### Added
 +
 +- Add a Printer offers Klipper / Moonraker alongside the Prusa guide. Enter a name and Moonraker address to save the connection and wait for the printer to appear.
+diff --git a/docs/changes/20261119-000000-readonly-coordinates.md b/docs/changes/20261119-000000-readonly-coordinates.md
+new file mode 100644
+--- /dev/null
++++ b/docs/changes/20261119-000000-readonly-coordinates.md
+@@ -0,0 +1,4 @@
++### Fixed
++
++- Printer controls show reported X, Y and Z coordinates even when the connection offers no movement commands. Missing readings are shown separately from zero.
++- External connectors can supply JSON capability profiles through the existing validated profile loader.
 diff --git a/frontend/src/lib/printers/moonraker-setup/moonraker-setup-story.svelte b/frontend/src/lib/printers/moonraker-setup/moonraker-setup-story.svelte
 new file mode 100644
 --- /dev/null
