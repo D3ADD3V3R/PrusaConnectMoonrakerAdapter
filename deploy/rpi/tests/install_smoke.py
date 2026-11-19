@@ -156,11 +156,14 @@ exec "$@"
                 'INSTALL_MIGRATE': '1',
             })
             result = subprocess.run(['bash', str(ROOT / 'scripts/install.sh')],
-                                    env=environment, capture_output=True, text=True, timeout=15)
+                                    env=environment, stdin=subprocess.DEVNULL,
+                                    capture_output=True, text=True, timeout=15)
             if fail_profile or auth == 'denied':
                 assert result.returncode != 0, result.stdout + result.stderr
                 if fail_profile == 'overlap':
                     assert 'different firmware ranges' in result.stderr, result.stderr
+                if auth == 'denied':
+                    assert 'Resource read access requires INSTALL_PC_TOKEN' in result.stderr, result.stderr
                 assert digest(target) == old_hash
                 assert json.loads(config.read_text()) == original_config
                 assert overlay.read_bytes() == original_overlay
@@ -189,7 +192,8 @@ exec "$@"
                 assert asset['enabled'] and not asset['required'] and Path(asset['asset']['path']).is_dir()
                 first_config = config.read_bytes()
                 repeated = subprocess.run(['bash', str(ROOT / 'scripts/install.sh')],
-                    env=environment, capture_output=True, text=True, timeout=15)
+                    env=environment, stdin=subprocess.DEVNULL,
+                    capture_output=True, text=True, timeout=15)
                 assert repeated.returncode == 0, repeated.stdout + repeated.stderr
                 assert config.read_bytes() == first_config
             actions = events.read_text().splitlines()
