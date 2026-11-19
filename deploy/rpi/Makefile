@@ -44,6 +44,7 @@ test: bootstrap
 
 smoke: build
 	@python3 "$(BUILD_ROOT)/tests/pc_smoke.py" --require-ui
+	@python3 "$(BUILD_ROOT)/tests/record_smoke.py"
 
 check-install: build
 	@mkdir -p "$(TMPDIR)"

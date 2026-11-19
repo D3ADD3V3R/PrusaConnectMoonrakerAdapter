@@ -116,6 +116,20 @@ def wait_setup(health, token):
         time.sleep(0.3)
 
 
+def wait_records(health, token):
+    deadline = time.monotonic() + float(os.environ.get('HEALTH_TIMEOUT_SECONDS', '45'))
+    while True:
+        try:
+            records = api_request(health, 'modules/com.github.aux.d3add3v3r.prusaconnectmoonrakeradapter/state', token)
+            if isinstance(records.get('items'), list):
+                return
+        except (OSError, ValueError):
+            pass
+        if time.monotonic() >= deadline:
+            raise RuntimeError('PCMA record store did not become readable')
+        time.sleep(0.3)
+
+
 def ask(title, default=''):
     if not sys.stdin.isatty():
         raise RuntimeError(title + ': terminal input required; use the documented INSTALL_* settings')
@@ -198,6 +212,19 @@ def selection(info, overlay):
     return choices
 
 
+def record_backend(rows, target):
+    databases = [row for row in rows if row.get('kind') == 'db']
+    active = [row for row in databases if row.get('enabled', True)]
+    if len(active) > 1:
+        raise RuntimeError('Multiple record backends are enabled; keep exactly one before installing PCMA')
+    if active:
+        return None  # Preserve the operator's backend, including its path and engine.
+    if any(row.get('name') == 'pcma-records' for row in databases):
+        raise RuntimeError('db pcma-records is disabled; enable the intended record backend before installing PCMA')
+    database = installation_path(target, 'config', 'pcma-records.sqlite')
+    return {'type': 'sqlite', 'enabled': True, 'required': True, 'config': {'path': str(database)}}
+
+
 def prepare(root, target, config, stage):
     helper = root / 'bin/pcma-install-config'
     info = inspect(helper, config, target)
@@ -207,6 +234,7 @@ def prepare(root, target, config, stage):
     if overlay.get('version') != 1:
         raise RuntimeError('Unsupported resource overlay version')
     rows = resource_rows(info, overlay)
+    records = record_backend(rows, target)
     if any(row.get('kind') == 'asset' and row.get('name') == 'pcma-tools'
            for row in overlay.get('instances', [])):
         raise RuntimeError('pcma-tools is managed in the resource overlay; resolve that declaration before installing')
@@ -292,7 +320,7 @@ def prepare(root, target, config, stage):
         'config': {'addresses': json.dumps({name: sorted({endpoint['address'] for endpoint in endpoints}) for name,endpoints in choices.items()},sort_keys=True)},
     }
     plan = stage / 'plan.json'
-    plan.write_text(json.dumps({'profiles': profiles, 'setup': setup_declaration, 'asset': {
+    plan.write_text(json.dumps({'profiles': profiles, 'setup': setup_declaration, 'records': records, 'asset': {
         'type': ASSET_TYPE, 'enabled': True, 'required': False,
         'asset': {'path': str(asset_path), 'checksum': checksum},
     }}))
@@ -389,6 +417,7 @@ def main():
                 run('python3', root / 'scripts/health.py', health, version)
                 wait_asset(health, token)
                 wait_setup(health, token)
+                wait_records(health, token)
                 pid = service_value(service, 'MainPID')
                 if sha(Path('/proc') / pid / 'exe') != sha(root / 'bin/prusa-connect-pcma'):
                     raise RuntimeError('Running binary hash differs from candidate')

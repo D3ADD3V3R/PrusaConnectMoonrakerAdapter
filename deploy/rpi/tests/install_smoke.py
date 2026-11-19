@@ -20,7 +20,7 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def check_installation(fail_health, fail_profile=False, fail_ui=False, auth=None):
+def check_installation(fail_health, fail_profile=False, fail_ui=False, auth=None, fail_records=False):
     scratch = ROOT / '.test-run'
     scratch.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='install-check-', dir=scratch) as name:
@@ -90,12 +90,17 @@ pathlib.Path(sys.argv[sys.argv.index('-output')+1]).write_text(json.dumps({
 
         class Health(BaseHTTPRequestHandler):
             def do_GET(self):
-                if self.path.startswith('/api/v1/resources') and auth:
+                if self.path.startswith(('/api/v1/resources', '/api/v1/modules')) and auth:
                     if auth == 'denied' or self.headers.get('Authorization') != 'Bearer isolated-test-token':
                         self.send_response(403)
                         self.end_headers()
                         self.wfile.write(b'{}')
                         return
+                if self.path.endswith('/state'):
+                    self.send_response(501 if fail_records else 200)
+                    self.end_headers()
+                    self.wfile.write(b'{}' if fail_records else b'{"items": []}')
+                    return
                 self.send_response(200)
                 self.end_headers()
                 if self.path.split('?')[0] == '/api/v1/resources':
@@ -163,7 +168,7 @@ exec "$@"
                 'HEALTH_TIMEOUT_SECONDS': '1.5',
                 'FAKE_INSTALL_DIR': str(target_dir), 'FAKE_PID': str(running.pid),
                 'FAKE_EVENTS': str(events),
-                'FAKE_OVERLAY': str(overlay), 'FAKE_MUTATE_OVERLAY': '1' if fail_health or fail_ui else '0',
+                'FAKE_OVERLAY': str(overlay), 'FAKE_MUTATE_OVERLAY': '1' if fail_health or fail_ui or fail_records else '0',
                 'FAKE_FAIL_PROFILE': '1' if fail_profile is True else '0',
                 'FAKE_PROFILE_OVERLAP': '1' if fail_profile == 'overlap' else '0',
                 'INSTALL_MIGRATE': '1',
@@ -184,14 +189,16 @@ exec "$@"
                 assert overlay.read_bytes() == original_overlay
                 assert not events.exists(), 'service touched before profile was ready'
                 return
-            expected = old_hash if fail_health or fail_ui else candidate_hash
+            expected = old_hash if fail_health or fail_ui or fail_records else candidate_hash
             assert digest(target) == expected, result.stdout + result.stderr
-            assert (result.returncode != 0) == (fail_health or fail_ui), result.stdout + result.stderr
+            assert (result.returncode != 0) == (fail_health or fail_ui or fail_records), result.stdout + result.stderr
+            if fail_records:
+                assert 'record store did not become readable' in result.stderr
             backups = list((target_dir / 'backups').iterdir())
             assert len(backups) == 1 and digest(backups[0] / 'prusa-connect') == old_hash
             assert sentinel.read_text() == 'existing configuration'
             assert overlay.read_bytes() == original_overlay
-            if fail_health or fail_ui:
+            if fail_health or fail_ui or fail_records:
                 assert json.loads(config.read_text()) == original_config
                 assert not list((target_dir / 'modules').glob('pcma-tools-*'))
                 assert not list((target_dir / 'profiles').glob('pcma-*.json'))
@@ -207,6 +214,9 @@ exec "$@"
                 asset = info['resources']['asset']['pcma-tools']
                 assert asset['enabled'] and not asset['required'] and Path(asset['asset']['path']).is_dir()
                 setup = info['resources']['sink']['pcma-setup']
+                records = info['resources']['db']['pcma-records']
+                assert records == {'type': 'sqlite', 'enabled': True, 'required': True,
+                                   'config': {'path': str(target_dir / 'config/pcma-records.sqlite')}}
                 assert setup['service']['checks'] == ['configure']
                 assert setup['service']['memory_mib'] == 32
                 assert json.loads(setup['config']['addresses']) == {'existing':['localhost:7125'],'pcma':['localhost:7125']}
@@ -243,6 +253,18 @@ def check_configuration_rules():
     assert len(rows) == 1 and rows[0]['enabled'] is False, 'operator file must shadow the overlay'
     with tempfile.TemporaryDirectory(prefix='config-path-', dir=ROOT / '.test-run') as name:
         target = Path(name)
+        existing = {'kind': 'db', 'name': 'custom', 'type': 'postgres',
+                    'config': {'dsn': 'operator-managed'}}
+        assert installer.record_backend([existing], target) is None
+        assert installer.record_backend([dict(existing, enabled=False)], target)['type'] == 'sqlite'
+        for rows in ([existing, dict(existing, name='second')],
+                     [dict(existing, name='pcma-records', enabled=False)]):
+            try:
+                installer.record_backend(rows, target)
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError('ambiguous or explicitly disabled record configuration accepted')
         config = target / 'config.yml'
         config.write_text('core: {}')
         command = f'{{ path={target}/prusa-connect ; argv[]={target}/prusa-connect --config config.yml ; }}'
@@ -292,6 +314,7 @@ if __name__ == '__main__':
     check_installation(False)
     check_installation(True)
     check_installation(False, fail_ui=True)
+    check_installation(False, fail_records=True)
     check_installation(False, auth='required')
     check_installation(False, auth='denied')
     check_installation(False, fail_profile=True)

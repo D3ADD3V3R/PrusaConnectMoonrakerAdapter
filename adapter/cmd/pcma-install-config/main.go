@@ -79,6 +79,7 @@ type plan struct {
 	Profiles map[string]string `json:"profiles"`
 	Asset    map[string]any    `json:"asset"`
 	Setup    map[string]any    `json:"setup"`
+	Records  map[string]any    `json:"records"`
 }
 
 func run() error {
@@ -184,6 +185,16 @@ func run() error {
 	resources, err := mapping(root, "resources")
 	if err != nil {
 		return err
+	}
+	if p.Records != nil {
+		dbs, err := mapping(resources, "db")
+		if err != nil {
+			return err
+		}
+		if get(dbs, "pcma-records") != nil {
+			return fmt.Errorf("db pcma-records already exists; retain or enable the existing record backend")
+		}
+		put(dbs, "pcma-records", node(p.Records))
 	}
 	assets, err := mapping(resources, "asset")
 	if err != nil {
