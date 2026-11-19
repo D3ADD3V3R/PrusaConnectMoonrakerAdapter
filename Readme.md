@@ -21,9 +21,11 @@ PrusaConnectMoonrakerAdapter connects Klipper printers through Moonraker to Prus
 - A Prusa / Klipper-Moonraker choice in Add a Printer, with address entry and connection status
 - A configuration profile generator and coordinate readings without motion controls
 - Manual homing, relative jogging, mesh leveling and filament actions, with live state checks
+- Generic single-extruder Klipper filament macros, with persistent requests and local confirmation
+- Macro checks, download, and a guarded Moonraker installation offer in the PCMA tab
 - A separate Raspberry Pi build directory and an installer with backup, health checks and rollback
 
-The real Klipper macros and LCD workflow are still required before enabling PCMA print starts. The simulator implements the macro contract for testing. The production queue, dedicated PCMA status UI and supervised hardware acceptance remain separate integration work.
+The generic [filament macros](klipper/README.md) implement manual maintenance on a fresh Klipper printer. They have configurable extrusion settings and an optional LCD menu; no existing machine-specific filament macros are needed. Automatic PCMA print starts require the separate full print/bed-confirmation contract and remain disabled by this bundle. The production queue and supervised hardware acceptance remain separate integration work.
 
 ## Build on a Raspberry Pi
 
@@ -52,9 +54,9 @@ The default install target is `/home/administrator/prusa-connect/prusa-connect`,
 
 ## Connect a printer
 
-The public build uses neutral PCMA identifiers. Its connector instance is `pcma`, its type is `pcma-moonraker`, and its printer macro contract uses `PCMA_*`. Existing installations must align their configuration, prepared files and macros with these identifiers before switching to this build. The installer does not rewrite an existing installation's configuration.
+The public build uses neutral PCMA identifiers. Its connector instance is `pcma`, its type is `pcma-moonraker`, and its printer macro contract uses `PCMA_*`. The installer configures this instance and offers migration of legacy connector declarations.
 
-Enable a PCMA connector instance named `pcma` in the PC installation's `config/config.yaml`. If the file does not exist, create it. Preserve any existing settings and other connector declarations.
+For a manual installation instead of `make install`, enable a PCMA connector instance named `pcma` in the PC installation's `config/config.yaml`. If the file does not exist, create it. Preserve any existing settings and other connector declarations.
 
 ```yaml
 core:
@@ -74,7 +76,7 @@ Moonraker API-key authentication is not implemented in this adapter version. Pri
 
 ## Generate a capability profile
 
-After building, read the printer's active configuration with the supplied tool:
+`make install` generates and registers these profiles. For a manual installation, read the printer's active configuration with the supplied tool after building:
 
 ```sh
 ./bin/pcma-profile -address http://printer.local:7125 -model Klipper -uploads -output /home/administrator/klipper-capabilities.json

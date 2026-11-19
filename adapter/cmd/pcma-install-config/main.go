@@ -78,6 +78,7 @@ func node(v any) *yaml.Node {
 type plan struct {
 	Profiles map[string]string `json:"profiles"`
 	Asset    map[string]any    `json:"asset"`
+	Setup    map[string]any    `json:"setup"`
 }
 
 func run() error {
@@ -200,6 +201,19 @@ func run() error {
 	}
 	for _, key := range []string{"type", "enabled", "required", "asset"} {
 		put(asset, key, node(p.Asset[key]))
+	}
+	if p.Setup != nil {
+		sinks, err := mapping(resources, "sink")
+		if err != nil {
+			return err
+		}
+		if existing := get(sinks, "pcma-setup"); existing != nil {
+			t := get(existing, "type")
+			if t == nil || t.Value != p.Setup["type"] {
+				return fmt.Errorf("sink pcma-setup belongs to another type")
+			}
+		}
+		put(sinks, "pcma-setup", node(p.Setup))
 	}
 	fout, err := os.OpenFile(*out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {

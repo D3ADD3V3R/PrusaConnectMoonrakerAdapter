@@ -29,7 +29,7 @@ Für automatisierte Aufrufe lässt sich die Migration mit `INSTALL_MIGRATE=1` be
 
 Der Build verwendet einen Go-Prozess und begrenzte Go-/Node-Speichereinstellungen für den Pi mit etwa 1 GB RAM. Temporäre Dateien und Caches liegen auf der SD-Karte im Build-Verzeichnis. Der erste Build lädt die gepinnten Abhängigkeiten und benötigt entsprechend Zeit.
 
-Die Build-Version lautet `0.1.0-beta.1+pcma.0.3.4`. Der öffentliche Update-Prüfschlüssel wurde aus den Build-Metadaten der vorhandenen offiziellen Binary übernommen. Der Dokumentationslink verweist auf die zugrunde liegende PC-Beta-Version.
+Die Build-Version lautet `0.1.0-beta.1+pcma.0.3.5`. Der öffentliche Update-Prüfschlüssel wurde aus den Build-Metadaten der vorhandenen offiziellen Binary übernommen. Der Dokumentationslink verweist auf die zugrunde liegende PC-Beta-Version.
 
 Wie die vorhandene Release-Binary verwendet der Build `CGO_ENABLED=0` und die Tags `full`, `diagnostics`, `observability` und `postgres`.
 
@@ -40,3 +40,5 @@ Die Sicherungen liegen in einem datierten Unterordner von `/home/administrator/p
 Die Datenbank und Druckerhistorie werden nicht ersetzt. Der Installer schaltet automatische Druckstarts nicht zusätzlich frei. Deren Voraussetzungen stehen in `adapter/README.md` und `klipper/adapter-contract.md`.
 
 Weitere Ziele lassen sich mit `make help` anzeigen. `make status` liest Dienstzustand und Version. Die Make-Variablen `INSTALL_DIR`, `SERVICE` und `HEALTH_URL` passen Ziel und Gesundheitsprüfung bei Bedarf an. Die Standardwerte entsprechen dem geprüften PrinterFarmHost.
+
+Ab Version `pcma.0.3.5` installiert derselbe Aufruf auch den getrennten PCMA-Setup-Dienst. Er nutzt die bestehende Sitzung und vom Installer aus den Connector-Endpunkten übernommene Adressen; Schreibzugriffe verlangen zusätzlich Configure-Rechte auf den ausgewählten Drucker. Der PCMA-Reiter prüft Makros und bietet die generische Datei an. Erst ein bestätigter Klick schreibt sie über Moonraker; ein weiterer bestätigter Klick startet Klipper neu. `make install` selbst verändert keine Druckerkonfiguration und startet Klipper nicht neu. Der Dienst nutzt ein auf Linux/ARM64 geprüftes Prozessbudget von 32 MiB. Die Makrodateien stehen unter `adapter/macroconfig/pcma-filament.cfg` und optional `klipper/pcma-menu.cfg`; Einbindung und Hardwareparameter beschreibt `klipper/README.md`.

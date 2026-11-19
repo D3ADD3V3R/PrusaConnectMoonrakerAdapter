@@ -128,7 +128,7 @@ func (s *Session) manualCommand(ctx context.Context, cmd connectorapi.Command) (
 	fields := objectFields(reply.Status)
 	if cmd.Verb == VerbLoadFilament && cmd.Args["mode"] == "change" {
 		phase := klipperText(fields[evoObject]["filament_phase"])
-		if slices.Contains([]string{"REQUESTED", "UNLOADING", "LOADING", "AWAITING_CONFIRMATION"}, phase) {
+		if slices.Contains([]string{"REQUESTED", "UNLOADING", "LOADING", "AWAITING_INSERTION", "AWAITING_CONFIRMATION", "RECOVERY_REQUIRED"}, phase) {
 			return manualRefused("a filament change is already pending on the printer"), nil
 		}
 	}
@@ -163,6 +163,9 @@ func (s *Session) manualCommand(ctx context.Context, cmd connectorapi.Command) (
 		script, err = filamentScript(cmd)
 		if err != nil {
 			return manualRefused(err.Error()), nil
+		}
+		if script == "LOAD_FILAMENT" && slices.Contains(s.objects, "gcode_macro PCMA_LOCAL_LOAD") {
+			script = "PCMA_LOCAL_LOAD"
 		}
 	case VerbUnloadFilament:
 		script = "UNLOAD_FILAMENT"

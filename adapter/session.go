@@ -341,9 +341,13 @@ func (s *Session) Do(ctx context.Context, cmd connectorapi.Command) (connectorap
 		if err != nil {
 			return connectorapi.Result{}, err
 		}
-		pendingFilament := slices.Contains([]string{"REQUESTED", "UNLOADING", "LOADING", "AWAITING_CONFIRMATION"}, snapshot.Evo.FilamentPhase)
+		manualContract := snapshot.Evo.ContractVersion == 0 && snapshot.Evo.FilamentContractVersion == 1
+		pendingFilament := slices.Contains([]string{"REQUESTED", "UNLOADING", "LOADING", "AWAITING_INSERTION", "AWAITING_CONFIRMATION", "RECOVERY_REQUIRED", "UNLOADED"}, snapshot.Evo.FilamentPhase)
+		if manualContract && snapshot.Evo.FilamentPhase != "IDLE" && snapshot.Evo.FilamentPhase != "CONFIRMED" {
+			pendingFilament = true
+		}
 		unconfirmedChange := snapshot.Evo.ChangeID != "" && (snapshot.Evo.ConfirmedChangeID != snapshot.Evo.ChangeID || snapshot.Evo.FilamentPhase != "CONFIRMED")
-		if snapshot.Evo.ContractVersion != 1 || snapshot.Evo.Phase != "PAUSED_OTHER" || pendingFilament || unconfirmedChange {
+		if (!manualContract && (snapshot.Evo.ContractVersion != 1 || snapshot.Evo.Phase != "PAUSED_OTHER")) || pendingFilament || unconfirmedChange {
 			return blockedStart("this pause requires the local material confirmation"), nil
 		}
 	}
@@ -353,7 +357,11 @@ func (s *Session) Do(ctx context.Context, cmd connectorapi.Command) (connectorap
 		return connectorapi.Result{}, err
 	}
 
-	result, refusal, err := s.call(ctx, method, params)
+	timeout := s.timeout
+	if cmd.Verb == VerbResumePrint {
+		timeout = max(timeout, 5*time.Minute)
+	}
+	result, refusal, err := s.callWithTimeout(ctx, method, params, timeout)
 	if err != nil {
 		return connectorapi.Result{}, err
 	}

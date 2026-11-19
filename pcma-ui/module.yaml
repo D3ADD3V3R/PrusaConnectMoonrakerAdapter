@@ -1,6 +1,6 @@
 name: pcma-tools
 kind: asset
-version: 0.3.4
+version: 0.3.5
 license: OCL v1.1 + Micro v1 + NoSaaS v1 + SWAtt v1
 title: PCMA
 summary: Manual Moonraker filament changes with confirmed Materials assignments.

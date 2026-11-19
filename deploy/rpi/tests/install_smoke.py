@@ -51,6 +51,10 @@ def check_installation(fail_health, fail_profile=False, fail_ui=False, auth=None
             data = json.loads(overlay.read_text())
             data['endpoints'].append({'name': 'second', 'connector': 'existing', 'address': 'localhost:7126'})
             overlay.write_text(json.dumps(data))
+        if fail_profile == 'setup_collision':
+            data = json.loads(overlay.read_text())
+            data['instances'].append({'kind':'sink','name':'pcma-setup','type':'org.example.other/worker','enabled':True})
+            overlay.write_text(json.dumps(data))
         original_overlay = overlay.read_bytes()
         (work / 'bin').mkdir()
         candidate = work / 'bin/prusa-connect-pcma'
@@ -62,6 +66,9 @@ def check_installation(fail_health, fail_profile=False, fail_ui=False, auth=None
         shutil.copy2(ROOT / 'scripts/health.py', work / 'scripts/health.py')
         shutil.copy2(ROOT / 'scripts/install.py', work / 'scripts/install.py')
         shutil.copy2(ROOT / 'bin/pcma-install-config', work / 'bin/pcma-install-config')
+        shutil.copy2('/usr/bin/true', work / 'bin/pcma-setup_linux_arm64')
+        for filename in ('LICENCE.md', 'NOTICE.md'):
+            shutil.copy2(ROOT / filename, work / filename)
         (work / 'pcma-ui/dist/ui').mkdir(parents=True)
         shutil.copy2(ROOT / 'pcma-ui/prepare-install.py', work / 'pcma-ui/prepare-install.py')
         (work / 'pcma-ui/dist/module.yaml').write_text('name: pcma-tools\nkind: asset\nversion: 0.3.4\n')
@@ -99,6 +106,12 @@ pathlib.Path(sys.argv[sys.argv.index('-output')+1]).write_text(json.dumps({
                         'type': 'com.github.aux.d3add3v3r.prusaconnectmoonrakeradapter/pcma-tools',
                         'enabled': True, 'status': {'state': 'failed' if fail_ui else 'ready', 'serving': not fail_ui},
                         'ui': None if fail_ui else {'entry_url': '/ui/index.js'},
+                    }).encode())
+                    return
+                if self.path == '/api/v1/resources/sink/pcma-setup':
+                    self.wfile.write(json.dumps({
+                        'type': 'com.github.aux.d3add3v3r.prusaconnectmoonrakeradapter.setup/pcma-setup',
+                        'status': {'state': 'ready', 'serving': True},
                     }).encode())
                     return
                 version = 'wrong-version' if fail_health else 'installation-test'
@@ -162,6 +175,8 @@ exec "$@"
                 assert result.returncode != 0, result.stdout + result.stderr
                 if fail_profile == 'overlap':
                     assert 'different firmware ranges' in result.stderr, result.stderr
+                if fail_profile == 'setup_collision':
+                    assert 'pcma-setup is managed in the resource overlay' in result.stderr, result.stderr
                 if auth == 'denied':
                     assert 'Resource read access requires INSTALL_PC_TOKEN' in result.stderr, result.stderr
                 assert digest(target) == old_hash
@@ -180,6 +195,7 @@ exec "$@"
                 assert json.loads(config.read_text()) == original_config
                 assert not list((target_dir / 'modules').glob('pcma-tools-*'))
                 assert not list((target_dir / 'profiles').glob('pcma-*.json'))
+                assert not list((target_dir / 'modules').rglob('*linux_arm64'))
             else:
                 info = json.loads(subprocess.check_output([str(work / 'bin/pcma-install-config'),
                     '-config', str(config), '-work', str(target_dir)]))
@@ -190,6 +206,10 @@ exec "$@"
                 assert info['connectors']['xbuddy']['type'] == 'xbuddy'
                 asset = info['resources']['asset']['pcma-tools']
                 assert asset['enabled'] and not asset['required'] and Path(asset['asset']['path']).is_dir()
+                setup = info['resources']['sink']['pcma-setup']
+                assert setup['service']['checks'] == ['configure']
+                assert setup['service']['memory_mib'] == 32
+                assert json.loads(setup['config']['addresses']) == {'existing':['localhost:7125'],'pcma':['localhost:7125']}
                 first_config = config.read_bytes()
                 repeated = subprocess.run(['bash', str(ROOT / 'scripts/install.sh')],
                     env=environment, stdin=subprocess.DEVNULL,
@@ -238,5 +258,6 @@ if __name__ == '__main__':
     check_installation(False, auth='denied')
     check_installation(False, fail_profile=True)
     check_installation(False, fail_profile='overlap')
+    check_installation(False, fail_profile='setup_collision')
     check_configuration_rules()
     print('PASS install, repeat install, binary/config/overlay rollback, failed-probe isolation, overlapping profiles and YAML precedence')

@@ -34,6 +34,7 @@ import (
 
 	"github.com/prusa3d/prusa-connect/sdk/connectorapi"
 	"github.com/prusa3d/prusa-connect/sdk/extension"
+	"pcma.local/moonraker/macroconfig"
 )
 
 // Type is the value of a connector's `type` in configuration that selects this
@@ -297,6 +298,10 @@ func (d *Driver) Connect(
 		session.hangUp()
 
 		return nil, err
+	}
+	if address, err := macroconfig.Address(endpoint.Address); err == nil {
+		encoded, _ := json.Marshal(address)
+		session.first = append(session.first, connectorapi.StatePatch{Path: "/pcma/moonraker_address", Value: encoded})
 	}
 	if d.uploads && profile.Has(connectorapi.VerbFileUpload) {
 		if err := session.prepareUploads(ctx, endpoint.Address, resolved); err != nil {

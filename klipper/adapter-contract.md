@@ -1,6 +1,6 @@
 # Schnittstelle zwischen Adapter und Klipper-Makros
 
-Stand 18.11.2026. Dies ist der im Adapter und Simulator implementierte Vertrag für die folgenden Makros. Die Konfiguration für den realen Ender 3 muss diesen Vertrag noch umsetzen und im kontrollierten Hardwaretest bestehen.
+Stand 19.11.2026. Dies ist der im Adapter und Simulator implementierte Vertrag für die folgenden Makros. Das generische Paket `adapter/macroconfig/pcma-filament.cfg` implementiert den manuellen Filamentablauf für frisches Klipper mit einem Extruder. Es setzt `filament_contract_version=1`, aber ausdrücklich `contract_version=0`: Automatische Druckstarts, Bettfreigaben und deren Wiederherstellung sind damit nicht freigegeben. Der folgende vollständige Druckvertrag bleibt ein eigener Integrationsschritt. Die Hardwareabnahme erfolgt je Drucker; es gibt keine fest eingebaute Ender-Konfiguration.
 
 ## Statusobjekt
 
@@ -39,7 +39,7 @@ Der Hook prüft die gültige Bettbestätigung samt PC-Quittierung erneut auf dem
 
 Das eigene PCMA-Modul stellt einen separaten Wechselablauf bereit. Materials und dessen vorhandener Change-Button bleiben unverändert. PCMA liest Material und optional Spule aus der Materials-API. Es speichert einen Auftrag vor dem Senden und übermittelt Materialtyp, RGB-Farbe und eine eindeutige Auftrags-ID, beispielsweise `PCMA_FILAMENT_CHANGE MATERIAL=PETG COLOR=C_FF8000 REQUEST=2da0809d-9143-4e42-8d80-80f76d4f0894`. Der native PC-Befehl lautet `core.command.load_filament` mit `mode=change`, `filament=PETG`, `color=#FF8000` und `request_id=<Auftrags-ID>`.
 
-`PCMA_STATE` ergänzt dafür `change_id`, `confirmed_change_id` und `filament_phase`. Das Makro speichert `change_id` vor der ersten physischen Aktion. Eine Wiederholung derselben aktuellen Auftrags-ID startet keinen zweiten Wechsel. Während `REQUESTED`, `UNLOADING`, `LOADING` oder `AWAITING_CONFIRMATION` nimmt der Adapter keinen weiteren Wechselauftrag an. Der Benutzer kann Laden/Entladen weiterhin innerhalb des laufenden Ablaufs bedienen.
+`PCMA_STATE` ergänzt dafür `change_id`, `confirmed_change_id` und `filament_phase`. Das Makro speichert `change_id` vor der ersten physischen Aktion. Eine Wiederholung derselben aktuellen Auftrags-ID startet keinen zweiten Wechsel. `AWAITING_INSERTION` wartet auf das Einführen, `LOADING` kennzeichnet den bereits begonnenen Ladeweg. Während `REQUESTED`, `UNLOADING`, `AWAITING_INSERTION`, `LOADING`, `AWAITING_CONFIRMATION` oder `RECOVERY_REQUIRED` nimmt der Adapter keinen weiteren Wechselauftrag an. `UNLOADED` verlangt einen neuen Auftrag oder eine ausdrücklich lokal geprüfte Rücksetzung vor Resume. Die generische Datei enthält eigene Lade-, Entlade- und Purge-Routinen mit konfigurierbaren Grenzen; bestehende Maschinenmakros werden nicht vorausgesetzt.
 
 Erst nach lokaler Prüfung darf das Makro die angeforderte ID nach `confirmed_change_id` übernehmen, `loaded_material` und `loaded_color` aktualisieren und `filament_phase=CONFIRMED` setzen. Der Adapter spiegelt diese Werte unter `/pcma/*`; bestätigtes Material und RGB-Farbe werden außerdem im nativen Tool-Baum gemeldet. `UNKNOWN` entfernt dort eine bisherige Angabe. Der Auftrag gilt nur bei übereinstimmenden IDs, bestätigter Phase sowie passendem Material und passender Farbe als bestätigt. Nach einem Neustart darf kein Auftrag ohne Prüfung der physischen Lage als neu bestätigt erscheinen.
 

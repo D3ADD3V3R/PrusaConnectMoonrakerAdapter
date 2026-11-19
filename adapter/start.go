@@ -13,17 +13,18 @@ import (
 )
 
 type evoState struct {
-	ChangeID          string `json:"change_id"`
-	ConfirmedChangeID string `json:"confirmed_change_id"`
-	FilamentPhase     string `json:"filament_phase"`
-	ContractVersion   int    `json:"contract_version"`
-	ExecutionID       string `json:"execution_id"`
-	Phase             string `json:"phase"`
-	BedClear          bool   `json:"bed_clear_confirmed"`
-	BedFor            string `json:"bed_clear_for"`
-	BedSequence       int64  `json:"bed_clear_sequence"`
-	AckFor            string `json:"bed_clear_ack_for"`
-	AckSequence       int64  `json:"bed_clear_ack_sequence"`
+	ChangeID                string `json:"change_id"`
+	ConfirmedChangeID       string `json:"confirmed_change_id"`
+	FilamentPhase           string `json:"filament_phase"`
+	ContractVersion         int    `json:"contract_version"`
+	FilamentContractVersion int    `json:"filament_contract_version"`
+	ExecutionID             string `json:"execution_id"`
+	Phase                   string `json:"phase"`
+	BedClear                bool   `json:"bed_clear_confirmed"`
+	BedFor                  string `json:"bed_clear_for"`
+	BedSequence             int64  `json:"bed_clear_sequence"`
+	AckFor                  string `json:"bed_clear_ack_for"`
+	AckSequence             int64  `json:"bed_clear_ack_sequence"`
 }
 
 type executionSnapshot struct {

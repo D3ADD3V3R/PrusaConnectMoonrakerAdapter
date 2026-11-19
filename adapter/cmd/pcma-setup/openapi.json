@@ -1,0 +1,139 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PCMA Klipper setup",
+    "version": "0.3.5"
+  },
+  "paths": {
+    "/devices/{id}/macros": {
+      "get": {
+        "operationId": "pcma-macro-status",
+        "summary": "pcma macro status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "description": "Read installed PCMA macros and an idle-printer installation plan. No printer actions are sent."
+      },
+      "post": {
+        "operationId": "pcma-install-macros",
+        "summary": "pcma install macros",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "config_digest": {
+                    "type": "string"
+                  },
+                  "bundle_digest": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "config_digest",
+                  "bundle_digest"
+                ]
+              }
+            }
+          }
+        },
+        "description": "Back up configuration, upload the compiled PCMA bundle and add its include after digest checks. Requires configure on the printer. Does not restart Klipper."
+      }
+    },
+    "/devices/{id}/macros/restart": {
+      "post": {
+        "operationId": "pcma-restart-klipper",
+        "summary": "pcma restart klipper",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "config_digest": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "config_digest"
+                ]
+              }
+            }
+          }
+        },
+        "description": "Restart Klipper only after an explicit request, with matching configuration digest and an idle printer. Requires configure on the printer."
+      }
+    }
+  }
+}

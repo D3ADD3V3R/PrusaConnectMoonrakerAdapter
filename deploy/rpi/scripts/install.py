@@ -20,6 +20,7 @@ import urllib.request
 
 
 ASSET_TYPE = 'com.github.aux.d3add3v3r.prusaconnectmoonrakeradapter/pcma-tools'
+SETUP_TYPE = 'com.github.aux.d3add3v3r.prusaconnectmoonrakeradapter.setup/pcma-setup'
 
 
 def run(*args, **kwargs):
@@ -78,6 +79,21 @@ def wait_asset(health, token):
             pass
         if time.monotonic() >= deadline:
             raise RuntimeError('PCMA asset did not become ready with a published UI entry')
+        time.sleep(0.3)
+
+
+def wait_setup(health, token):
+    deadline = time.monotonic() + float(os.environ.get('HEALTH_TIMEOUT_SECONDS', '45'))
+    while True:
+        try:
+            resource = api_request(health, 'resources/sink/pcma-setup', token)
+            status = resource.get('status') or {}
+            if resource.get('type') == SETUP_TYPE and status.get('state') == 'ready' and status.get('serving'):
+                return
+        except (OSError, ValueError):
+            pass
+        if time.monotonic() >= deadline:
+            raise RuntimeError('PCMA setup service did not become ready')
         time.sleep(0.3)
 
 
@@ -175,6 +191,9 @@ def prepare(root, target, config, stage):
     if any(row.get('kind') == 'asset' and row.get('name') == 'pcma-tools'
            for row in overlay.get('instances', [])):
         raise RuntimeError('pcma-tools is managed in the resource overlay; resolve that declaration before installing')
+    if any(row.get('kind') == 'sink' and row.get('name') == 'pcma-setup'
+           for row in overlay.get('instances', [])):
+        raise RuntimeError('pcma-setup is managed in the resource overlay; resolve that declaration before installing')
     materials = [row for row in rows if row.get('type') == 'com.github.aux.prusa3d.materials/materials'
                  and row.get('enabled', True)]
     if len(materials) != 1:
@@ -231,13 +250,30 @@ def prepare(root, target, config, stage):
         content = (json.dumps({'schema': 1, 'generated_by': 'pcma-profile', 'profiles': generated}, sort_keys=True) + '\n').encode()
         profile_path = installation_path(target, 'profiles', 'pcma-' + hashlib.sha256(content).hexdigest() + '.json')
         profiles[name] = str(profile_path)
-        writes.append((profile_path, content))
+        writes.append((profile_path, content, 0o600))
     # The stock Add a Printer form addresses pcma. Retain old instance names
     # as well, so existing endpoint and device identities do not move.
     if 'pcma' not in profiles:
         profiles['pcma'] = next(iter(profiles.values()))
+    setup_binary = root / 'bin/pcma-setup_linux_arm64'
+    setup_bytes = setup_binary.read_bytes()
+    setup_hash = sha(setup_binary)
+    setup_path = installation_path(target, 'modules', 'pcma-setup-' + setup_hash)
+    writes.append((setup_path / 'pcma-setup_linux_arm64', setup_bytes, 0o755))
+    for name in ('LICENCE.md', 'NOTICE.md'):
+        writes.append((setup_path / name, (root / name).read_bytes(), 0o644))
+    setup_declaration = {
+        'type': SETUP_TYPE, 'enabled': True, 'runtime': 'service',
+        'module': {'version': '0.3.5', 'title': 'PCMA Klipper setup',
+                   'path': 'github.com/d3add3v3r/prusaconnectmoonrakeradapter/setup',
+                   'options': [{'key': 'addresses', 'type': 'string', 'default': '{}',
+                                'summary': 'JSON map of connector names to approved Moonraker addresses.'}]},
+        'service': {'path': str(setup_path), 'checksum': 'sha256:' + setup_hash,
+                    'contract_major': 1, 'checks': ['configure'], 'memory_mib': 32},
+        'config': {'addresses': json.dumps({name: sorted({endpoint['address'] for endpoint in endpoints}) for name,endpoints in choices.items()},sort_keys=True)},
+    }
     plan = stage / 'plan.json'
-    plan.write_text(json.dumps({'profiles': profiles, 'asset': {
+    plan.write_text(json.dumps({'profiles': profiles, 'setup': setup_declaration, 'asset': {
         'type': ASSET_TYPE, 'enabled': True, 'required': False,
         'asset': {'path': str(asset_path), 'checksum': checksum},
     }}))
@@ -318,13 +354,13 @@ def main():
                     asset.parent.mkdir(parents=True, exist_ok=True)
                     os.replace(staged_asset, asset)
                     new_asset = True
-                for path, content in profiles:
+                for path, content, mode in profiles:
                     if path.exists():
                         if path.read_bytes() != content:
                             raise RuntimeError('Existing content-addressed profile differs')
                     else:
                         installed_owner = binary.stat()
-                        atomic_file(path, content, owner=(installed_owner.st_uid, installed_owner.st_gid))
+                        atomic_file(path, content, mode, owner=(installed_owner.st_uid, installed_owner.st_gid))
                         new_files.append(path)
                 changed = True
                 atomic_file(config, staged.read_bytes(), config.stat().st_mode & 0o777)
@@ -333,6 +369,7 @@ def main():
                 version = (root / 'bin/VERSION').read_text().strip()
                 run('python3', root / 'scripts/health.py', health, version)
                 wait_asset(health, token)
+                wait_setup(health, token)
                 pid = service_value(service, 'MainPID')
                 if sha(Path('/proc') / pid / 'exe') != sha(root / 'bin/prusa-connect-pcma'):
                     raise RuntimeError('Running binary hash differs from candidate')

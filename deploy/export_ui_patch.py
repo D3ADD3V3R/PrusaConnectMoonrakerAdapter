@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CORE = ROOT / 'upstream/prusa-connect'
 TARGET = ROOT / 'deploy/rpi/upstream.patch'
 
-scopes = ['frontend/src', 'packages/svelte/src/shell/printer-detail/controls', 'packages/svelte/src/i18n/catalogues.ts', 'packages/svelte/locales', 'internal/app/connectors.go', 'internal/app/connectors_test.go', 'docs/changes']
+scopes = ['frontend/src', 'packages/svelte/src/shell/printer-detail/controls', 'packages/svelte/src/i18n/catalogues.ts', 'packages/svelte/locales', 'packages/typescript/src/generated/operations.ts', 'internal/app/connectors.go', 'internal/app/connectors_test.go', 'internal/transport/http/httpapi/devices.go', 'internal/transport/http/httpapi/budget_test.go', 'internal/transport/http/httpapi/streaming_test.go', 'internal/transport/http/httpapi/openapi.json', 'docs/changes']
 tracked = subprocess.check_output(['git', '-C', str(CORE), 'diff', '--binary', 'HEAD', '--', *scopes])
 files = subprocess.check_output(['git', '-C', str(CORE), 'ls-files', '--others', '--exclude-standard', '--', *scopes]).decode().splitlines()
 parts = [tracked.decode().replace('\r\n', '\n')]

@@ -215,6 +215,85 @@ index 4f4b072..d777967 100644
  // TestADriverIsResolvedAgainstItsOwnProfilesAndNobodyElses is the defect this
  // wiring exists to stop.
  //
+diff --git a/internal/transport/http/httpapi/budget_test.go b/internal/transport/http/httpapi/budget_test.go
+index 238f803..8c96cb3 100644
+--- a/internal/transport/http/httpapi/budget_test.go
++++ b/internal/transport/http/httpapi/budget_test.go
+@@ -130,6 +130,7 @@ func TestTheStreamingRoutesCarryTheLongerBudget(t *testing.T) {
+ 		http.MethodGet + " " + cameraStreamPath,
+ 		http.MethodPost + " " + deviceFilesPath,
+ 		http.MethodPost + " " + devicePrintPath,
++		http.MethodPost + " " + deviceCommandsPath,
+ 		http.MethodGet + " " + storageContentPath,
+ 		http.MethodPut + " " + storageContentPath,
+ 		http.MethodPost + " " + storageContentPath,
+diff --git a/internal/transport/http/httpapi/devices.go b/internal/transport/http/httpapi/devices.go
+index 170026d..c80296b 100644
+--- a/internal/transport/http/httpapi/devices.go
++++ b/internal/transport/http/httpapi/devices.go
+@@ -1119,9 +1119,13 @@ func registerSendCommand(api huma.API, fleet DeviceFleet) {
+ 			"device and, only if it passes, sends it. A verb the device does not have and an argument " +
+ 			"the verb does not accept are both refused here, so the driver is never reached with " +
+ 			"something nothing checked. It takes operate on the device.",
+-		Tags:   []string{"devices"},
+-		Errors: commandErrors,
++		Tags:     []string{"devices"},
++		Errors:   commandErrors,
++		Metadata: streams(),
+ 	}, func(ctx context.Context, in *sendCommandInput) (*sendCommandOutput, error) {
++		if err := liftWriteDeadline(ctx); err != nil {
++			return nil, err
++		}
+ 		result, err := fleet.Command(ctx, principalFrom(ctx), in.DeviceID, in.Body)
+ 		if err != nil {
+ 			return nil, err
+diff --git a/internal/transport/http/httpapi/openapi.json b/internal/transport/http/httpapi/openapi.json
+index 6dda9b3..642bcc0 100644
+--- a/internal/transport/http/httpapi/openapi.json
++++ b/internal/transport/http/httpapi/openapi.json
+@@ -18544,7 +18544,8 @@
+         "summary": "Send a command to a device",
+         "tags": [
+           "devices"
+-        ]
++        ],
++        "x-long-running": true
+       }
+     },
+     "/api/v1/devices/{device_id}/files": {
+diff --git a/internal/transport/http/httpapi/streaming_test.go b/internal/transport/http/httpapi/streaming_test.go
+index 89a14e2..3f26131 100644
+--- a/internal/transport/http/httpapi/streaming_test.go
++++ b/internal/transport/http/httpapi/streaming_test.go
+@@ -27,6 +27,28 @@ type deadlineWriter struct {
+ 	fail   error
+ }
+ 
++type deadlineCommandFleet struct {
++	*fakeFleet
++	writer *deadlineWriter
++	during []time.Time
++}
++
++func (f *deadlineCommandFleet) Command(ctx context.Context, principal, id string, command PrinterCommand) (PrinterResult, error) {
++	f.during = append([]time.Time(nil), f.writer.writes...)
++	return f.fakeFleet.Command(ctx, principal, id, command)
++}
++func TestDeviceCommandLiftsTheWriteDeadlineBeforeDispatch(t *testing.T) {
++	recorder := httptest.NewRecorder()
++	writer := &deadlineWriter{ResponseWriter: recorder}
++	fleet := &deadlineCommandFleet{fakeFleet: &fakeFleet{printer: Device{ID: "pknown"}}, writer: writer}
++	handler := serverWithFleet(t, fleet).Handler()
++	request := httptest.NewRequest(http.MethodPost, devicesPath+"/pknown/commands", strings.NewReader(`{"verb":"core.command.home"}`))
++	request.Header.Set("Content-Type", "application/json")
++	handler.ServeHTTP(writer, request)
++	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
++	require.True(t, cleared(fleet.during), "the write deadline was not lifted before sending the machine command")
++}
++
+ func (w *deadlineWriter) SetReadDeadline(at time.Time) error {
+ 	w.reads = append(w.reads, at)
+ 
 diff --git a/packages/svelte/locales/de.json b/packages/svelte/locales/de.json
 index 4065351..a54b77b 100644
 --- a/packages/svelte/locales/de.json
@@ -373,6 +452,19 @@ index 0503215..5666c58 100644
    it('sends a relative jog of the chosen step, at the pad feedrate', async () => {
      const onCommand = vi.fn();
      await render(PrinterControlsPanel, {
+diff --git a/packages/typescript/src/generated/operations.ts b/packages/typescript/src/generated/operations.ts
+index f1db4ed..66b66b8 100644
+--- a/packages/typescript/src/generated/operations.ts
++++ b/packages/typescript/src/generated/operations.ts
+@@ -165,7 +165,7 @@ export const operationTable = {
+   "revoke-credential": { id: "revoke-credential", method: "DELETE", path: "/api/v1/auth/credentials/{credential}", response: "none", anonymous: false },
+   "revoke-link-node": { id: "revoke-link-node", method: "POST", path: "/api/v1/links/{name}/nodes/{id}/revoke", response: "json", anonymous: false },
+   "run-printer-gcode-preset": { id: "run-printer-gcode-preset", method: "POST", path: "/api/v1/devices/{device_id}/gcode/presets/{preset}", response: "json", anonymous: false },
+-  "send-device-command": { id: "send-device-command", method: "POST", path: "/api/v1/devices/{device_id}/commands", body: "application/json", response: "json", anonymous: false },
++  "send-device-command": { id: "send-device-command", method: "POST", path: "/api/v1/devices/{device_id}/commands", body: "application/json", response: "json", anonymous: false, longRunning: true },
+   "send-device-file": { id: "send-device-file", method: "POST", path: "/api/v1/devices/{device_id}/files", body: "application/json", response: "json", anonymous: false, longRunning: true },
+   "send-printer-gcode": { id: "send-printer-gcode", method: "POST", path: "/api/v1/devices/{device_id}/gcode", body: "application/json", response: "json", anonymous: false },
+   "set-account-password": { id: "set-account-password", method: "POST", path: "/api/v1/auth/accounts/{account}/password", body: "application/json", response: "none", anonymous: false },
 diff --git a/docs/changes/20261118-223000-moonraker-printer-setup.md b/docs/changes/20261118-223000-moonraker-printer-setup.md
 new file mode 100644
 --- /dev/null
@@ -390,6 +482,17 @@ new file mode 100644
 +
 +- Printer controls show reported X, Y and Z coordinates even when the connection offers no movement commands. Missing readings are shown separately from zero.
 +- External connectors can supply JSON capability profiles through the existing validated profile loader.
+diff --git a/docs/changes/20261119-160000-machine-command-wait.md b/docs/changes/20261119-160000-machine-command-wait.md
+new file mode 100644
+--- /dev/null
++++ b/docs/changes/20261119-160000-machine-command-wait.md
+@@ -0,0 +1,6 @@
++---
++title: Keep waiting for long printer commands
++kind: fix
++---
++
++Printer commands use the long request budget and release the listener's initial write deadline while waiting. The generated client also keeps the request open. Homing, bed probing and filament heating can take longer than the ordinary thirty-second API budget. The driver still bounds each action and reports an unknown outcome if its deadline or connection ends before the printer answers. An unknown outcome is never retried automatically.
 diff --git a/frontend/src/lib/printers/moonraker-setup/moonraker-setup-story.svelte b/frontend/src/lib/printers/moonraker-setup/moonraker-setup-story.svelte
 new file mode 100644
 --- /dev/null

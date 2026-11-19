@@ -14,6 +14,9 @@
     SelectValue,
   } from '@prusa/connect-ui/primitives';
   import { heldHost, namespaceOf } from './host';
+  import MacroSetup from './macro-setup.svelte';
+  import type { MacroStatus } from './macro-setup';
+  import { ApiError } from '@prusa/connect';
   import { createService, type Service } from './service';
   import { FilamentWorkflow } from './workflow.svelte';
   import {
@@ -30,9 +33,12 @@
   let workflow = $state.raw<FilamentWorkflow>();
   let service = $state.raw<Service>();
   let supported = $state(false);
+  let macrosReady = $state<boolean>();
   let ready = $state(false);
   let loading = $state(false);
   let failure = $state<unknown>(undefined);
+  let stage = $state('device');
+  let retry = $state.raw<() => Promise<void>>();
   let materials = $state.raw<Material[]>([]);
   let spools = $state.raw<Spool[]>([]);
   let query = $state('');
@@ -92,17 +98,27 @@
     const initialize = async (): Promise<void> => {
       if (service === undefined || workflow === undefined) return;
       try {
+        failure = undefined;
+        ready = false;
+        stage = 'device';
         supported = supportsChange(await service.device());
         if (supported) {
+          stage = 'journal';
           await workflow.load();
+          stage = 'materials';
           await search();
+          if (failure !== undefined) return;
+          stage = 'confirmation';
           await workflow.reconcile();
         }
         ready = true;
       } catch (error) {
         failure = error;
+      } finally {
+        ready = true;
       }
     };
+    retry = initialize;
     void initialize();
     const timer = setInterval(() => {
       if (ready && pending !== undefined && !document.hidden)
@@ -118,10 +134,26 @@
 <section data-module={namespace} class="flex flex-col gap-4 p-4">
   <h2 class="text-lg font-semibold">{t('pcma.heading')}</h2>
   <p class="text-sm text-muted-foreground">{t('pcma.attribution')}</p>
+  <MacroSetup
+    {deviceId}
+    onStatus={(status: MacroStatus | undefined) => {
+      if (status !== undefined) macrosReady = status.ready;
+    }}
+  />
   {#if issue !== undefined}
     <Alert variant="destructive"
       ><AlertTitle>{message(issue)}</AlertTitle></Alert
     >
+    {#if failure !== undefined}
+      <p>
+        {t(`pcma.stage.${stage}`)}{failure instanceof ApiError
+          ? ` · HTTP ${String(failure.status)} · ${failure.code ?? ''}`
+          : ''}
+      </p>
+      <Button disabled={busy} onclick={() => void retry?.()}
+        >{t('pcma.retry')}</Button
+      >
+    {/if}
   {/if}
   {#if !ready}
     <p>{t('pcma.loading')}</p>
@@ -264,7 +296,10 @@
         </p>
       {/if}
       <Button
-        disabled={busy || material === '' || !(workflow?.loaded ?? false)}
+        disabled={busy ||
+          material === '' ||
+          !(workflow?.loaded ?? false) ||
+          macrosReady === false}
         onclick={() =>
           void workflow?.start({
             material,

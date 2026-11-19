@@ -29,6 +29,38 @@ func TestConfirmedFilamentMetadataIsReportedAndUnknownClearsIt(t *testing.T) {
 	}
 }
 
+func TestManualOnlyContractReportsMaterialsWithoutEnablingPrintStarts(t *testing.T) {
+	r := &reader{}
+	r.heads.count = 1
+	patches := r.patchesFrom(reading(`{"gcode_macro PCMA_STATE":{"contract_version":0,"filament_contract_version":1,"loaded_material":"PLA","loaded_color":"C_ABCDEF"}}`, t), time.Now())
+	values := map[string]string{}
+	for _, patch := range patches {
+		values[patch.Path] = string(patch.Value)
+	}
+	require.Equal(t, `"PLA"`, values[connectorapi.ToolPath("0", connectorapi.MaterialType)])
+	require.Equal(t, `"#ABCDEF"`, values[connectorapi.ToolPath("0", connectorapi.MaterialColor)])
+}
+
+func TestManualOnlyResumeRequiresCompletedFilamentWorkflow(t *testing.T) {
+	for _, phase := range []string{"AWAITING_INSERTION", "LOADING", "RECOVERY_REQUIRED", "UNLOADED", "CONFIRMED"} {
+		t.Run(phase, func(t *testing.T) {
+			machine, err := moonrakersim.Start(t.Context(), moonrakersim.Options{PCMA: true})
+			require.NoError(t, err)
+			defer machine.Close()
+			machine.Push(map[string]map[string]any{evoObject: {"contract_version": 0, "filament_contract_version": 1, "phase": "IDLE", "filament_phase": phase, "change_id": "r1", "confirmed_change_id": "r1"}, "pause_resume": {"is_paused": true}, "print_stats": {"state": "paused"}, "webhooks": {"state": "ready"}})
+			driver := NewDriver(0)
+			session, err := driver.Connect(t.Context(), connectorapi.Endpoint{Address: machine.Address()}, driver.Baseline())
+			require.NoError(t, err)
+			defer session.Close()
+			result, err := session.Do(t.Context(), connectorapi.Command{Verb: VerbResumePrint})
+			require.NoError(t, err)
+			require.Equal(t, phase == "CONFIRMED", result.OK)
+			require.Equal(t, phase == "CONFIRMED", machine.Called("printer.print.resume"))
+			require.False(t, session.(*Session).caps.Has(VerbStartPrint))
+		})
+	}
+}
+
 func TestResumeCannotOvertakeManualAction(t *testing.T) {
 	machine, err := moonrakersim.Start(t.Context(), moonrakersim.Options{})
 	require.NoError(t, err)

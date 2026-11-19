@@ -1,0 +1,23 @@
+name: pcma-setup
+kind: sink
+version: 0.3.5
+license: OCL v1.1 + Micro v1 + NoSaaS v1 + SWAtt v1
+title: PCMA Klipper setup
+summary: Checks and installs the generic PCMA macros on configured Moonraker printers.
+codeowner: D3ADD3V3R
+contract_major: 1
+platforms:
+  - linux_arm64
+require:
+  core: ">=0.1.0-beta.1"
+  core-device.get: "*"
+  core-access.check: "*"
+checks:
+  - configure
+needs:
+  memory_mib: 32
+options:
+  - key: addresses
+    type: string
+    default: "{}"
+    summary: JSON map of connector names to approved Moonraker addresses.

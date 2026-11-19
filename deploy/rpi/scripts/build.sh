@@ -19,9 +19,10 @@ cd "$root/adapter"
 go build -trimpath -o "$root/bin/pcma-prepare" ./cmd/pcma-prepare
 go build -trimpath -o "$root/bin/pcma-profile" ./cmd/pcma-profile
 go build -trimpath -o "$root/bin/pcma-install-config" ./cmd/pcma-install-config
+go build -trimpath -o "$root/bin/pcma-setup_linux_arm64" ./cmd/pcma-setup
 go build -trimpath -o "$root/bin/moonraker-sim" ./cmd/moonraker-sim
 cd "$root/bin"
-sha256sum prusa-connect-pcma pcma-prepare pcma-profile pcma-install-config moonraker-sim > SHA256SUMS
+sha256sum prusa-connect-pcma pcma-prepare pcma-profile pcma-install-config pcma-setup_linux_arm64 moonraker-sim > SHA256SUMS
 go version -m prusa-connect-pcma > BUILDINFO.txt
 printf '%s\n' "$BUILD_VERSION" > VERSION
 cat SHA256SUMS
