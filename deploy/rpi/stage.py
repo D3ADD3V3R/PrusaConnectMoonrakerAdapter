@@ -17,8 +17,8 @@ def main():
     if (destination / 'prusa-connect').exists() or (destination / 'config').exists():
         parser.error('The destination looks like an installed PC system.')
     destination.mkdir(parents=True, exist_ok=True)
-    ignored = shutil.ignore_patterns('__pycache__', '*.pyc', 'node_modules', '.git')
-    for name in ('adapter', 'klipper', 'tests'):
+    ignored = shutil.ignore_patterns('__pycache__', '*.pyc', 'node_modules', '.git', 'dist', '.vitest')
+    for name in ('adapter', 'klipper', 'tests', 'pcma-ui'):
         shutil.copytree(repository / name, destination / name, dirs_exist_ok=True, ignore=ignored)
     for name in ('scripts', 'tests'):
         shutil.copytree(deployment / name, destination / name, dirs_exist_ok=True, ignore=ignored)
@@ -28,6 +28,8 @@ def main():
         shutil.copyfile(deployment / name, destination / name)
     for name in ('Readme.md', 'LICENCE.md', 'NOTICE.md'):
         shutil.copyfile(repository / name, destination / ('PROJECT-' + name))
+    for name in ('LICENCE.md', 'NOTICE.md'):
+        shutil.copyfile(repository / name, destination / name)
     print(f'Sources staged in {destination}')
     print(f'cd {destination}\nmake\nmake install')
 

@@ -264,6 +264,7 @@ func (d *Driver) Baseline() connectorapi.Set {
 	caps[connectorapi.VerbFileUpload] = connectorapi.Value{Flag: true}
 	caps[VerbStartPrint] = connectorapi.Value{Flag: true}
 	caps[connectorapi.ArgumentKey(VerbStartPrint, "path")] = filePathArgument()
+	manualBaseline(caps)
 	return caps
 }
 

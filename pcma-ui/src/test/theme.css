@@ -1,0 +1,8 @@
+@import 'tailwindcss' source(none);
+@import '@prusa/connect-ui/tokens.css';
+@source '../';
+@source '../../node_modules/@prusa/connect-ui/src/primitives';
+
+body {
+  @apply bg-background font-sans text-foreground;
+}

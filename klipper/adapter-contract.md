@@ -35,6 +35,22 @@ Der Hook prüft die gültige Bettbestätigung samt PC-Quittierung erneut auf dem
 
 `MATERIAL_CHANGE` bleibt bis zur lokalen Bestätigung aktiv. Die vorhandenen Wege für automatisches Laden, Filamentmenüs und reguläres Resume müssen diese Phase berücksichtigen. `Farbe OK` bestätigt den geladenen Zustand und setzt dieselbe Ausführung fort. Die wiederholbaren Purge-Aktionen gehören vollständig zur lokalen Routine.
 
+## Manuelle Wartung aus PC
+
+Das eigene PCMA-Modul stellt einen separaten Wechselablauf bereit. Materials und dessen vorhandener Change-Button bleiben unverändert. PCMA liest Material und optional Spule aus der Materials-API. Es speichert einen Auftrag vor dem Senden und übermittelt Materialtyp, RGB-Farbe und eine eindeutige Auftrags-ID, beispielsweise `PCMA_FILAMENT_CHANGE MATERIAL=PETG COLOR=C_FF8000 REQUEST=2da0809d-9143-4e42-8d80-80f76d4f0894`. Der native PC-Befehl lautet `core.command.load_filament` mit `mode=change`, `filament=PETG`, `color=#FF8000` und `request_id=<Auftrags-ID>`.
+
+`PCMA_STATE` ergänzt dafür `change_id`, `confirmed_change_id` und `filament_phase`. Das Makro speichert `change_id` vor der ersten physischen Aktion. Eine Wiederholung derselben aktuellen Auftrags-ID startet keinen zweiten Wechsel. Während `REQUESTED`, `UNLOADING`, `LOADING` oder `AWAITING_CONFIRMATION` nimmt der Adapter keinen weiteren Wechselauftrag an. Der Benutzer kann Laden/Entladen weiterhin innerhalb des laufenden Ablaufs bedienen.
+
+Erst nach lokaler Prüfung darf das Makro die angeforderte ID nach `confirmed_change_id` übernehmen, `loaded_material` und `loaded_color` aktualisieren und `filament_phase=CONFIRMED` setzen. Der Adapter spiegelt diese Werte unter `/pcma/*`; bestätigtes Material und RGB-Farbe werden außerdem im nativen Tool-Baum gemeldet. `UNKNOWN` entfernt dort eine bisherige Angabe. Der Auftrag gilt nur bei übereinstimmenden IDs, bestätigter Phase sowie passendem Material und passender Farbe als bestätigt. Nach einem Neustart darf kein Auftrag ohne Prüfung der physischen Lage als neu bestätigt erscheinen.
+
+Erst danach schreibt PCMA die Material-/Spulenzuordnung über die bestehende Materials-API. Das Wechselprotokoll bleibt pro angemeldetem Benutzer im PC-Datenspeicher erhalten. Beim erneuten Öffnen des PCMA-Tabs wird es abgeglichen; ein Druckerbefehl wird dabei nie erneut gesendet. Fehlt die Bestätigung, bleibt die bisherige Zuordnung erhalten. Ein fehlgeschlagener API-Schreibvorgang lässt sich ohne weiteren Wechselbefehl erneut versuchen. Ein zwischenzeitlich von einer Person geänderter Materialeintrag wird nicht bewusst überschrieben.
+
+`mode=load` mit Material und Farbe ruft `PCMA_LOAD_FILAMENT MATERIAL=... COLOR=...` auf. Ohne Metadaten bleibt die vorhandene Routine `LOAD_FILAMENT` nutzbar. Entladen verwendet `UNLOAD_FILAMENT`, solange kein PCMA-Zustandsvertrag aktiv ist; danach wird `PCMA_UNLOAD_FILAMENT` aufgerufen. Die PCMA-Makros müssen beim Entladen den bestätigten Material- und Farbzustand auf `UNKNOWN` setzen. Erst die lokale Bestätigung darf `loaded_material` und `loaded_color` aktualisieren. Kein dieser Aufrufe sendet Resume.
+
+Die künftigen PCMA-Filamentmakros dürfen während des Entwicklungsübergangs bereits adressiert werden. Fehlt das Makro in der Objektliste, meldet der Adapter den Auftrag ausdrücklich als fehlgeschlagen, selbst wenn Klipper den unbekannten Befehl lediglich als Hinweis beantwortet. Es gibt keinen automatischen Wiederholungsversuch.
+
+Homing verwendet `G28`. Mesh-Leveling verwendet `G28` und danach das vorhandene `G29`, ersatzweise `BED_MESH_CALIBRATE`. Mesh wird nur mit `bed_mesh` und `probe` angeboten. Relative XY-/Z-Bewegungen erfordern bekannte kartesische Achsgrenzen und referenzierte Zielachsen. Druck- und Bereitschaftszustand werden vor jeder manuellen Aktion frisch abgefragt. Während eines pausierten Drucks sind nur die Filamentaktionen erlaubt; die lokale Materialbestätigung bleibt erforderlich.
+
 ## Bettbestätigung und Quittierung
 
 Nach Druckende, Abbruch oder Fehler bleibt `bed_clear_confirmed=false`. Das LCD bietet die Prüfung für die aktuelle beendete Ausführung an. Eine gültige lokale Bestätigung setzt `bed_clear_for` auf deren ID, erhöht die persistente Sequenz und publiziert die zusammengehörigen Werte.

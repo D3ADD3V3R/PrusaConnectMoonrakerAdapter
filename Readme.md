@@ -20,6 +20,7 @@ PrusaConnectMoonrakerAdapter connects Klipper printers through Moonraker to Prus
 - Material-change status and generation-bound bed confirmations
 - A Prusa / Klipper-Moonraker choice in Add a Printer, with address entry and connection status
 - A configuration profile generator and coordinate readings without motion controls
+- Manual homing, relative jogging, mesh leveling and filament actions, with live state checks
 - A separate Raspberry Pi build directory and an installer with backup, health checks and rollback
 
 The real Klipper macros and LCD workflow are still required before enabling PCMA print starts. The simulator implements the macro contract for testing. The production queue, dedicated PCMA status UI and supervised hardware acceptance remain separate integration work.
@@ -83,13 +84,16 @@ The tool reads configuration, object availability and status. It sends no heater
 
 Set `core.connectors.pcma.config.capability_profile_path` to the absolute output path, then restart PC. The patched host validates the registry with its existing profile loader. A matching profile removes `no_capability_profile`; live probing and connector policy still restrict the accepted commands. `uploads: false` and `starts: false` retain their effect.
 
-Generation currently supports one extruder. Heater limits come from explicit configuration values. The firmware range begins at the observed version and ends before the next patch release; regenerate after firmware or configuration changes. This profile describes implemented adapter commands and does not approve a machine for unattended printing. Motion commands remain unavailable; coordinates can be displayed as readings.
+Generation currently supports one extruder. Heater limits come from explicit configuration values. The firmware range begins at the observed version and ends before the next patch release; regenerate after firmware or configuration changes. This profile describes implemented adapter commands and does not approve a machine for unattended printing. Manual motion requires known axis limits and homed axes; the adapter reads the current printer state before each action.
 
 ## Source layout
+
+The independent [PCMA UI module](pcma-ui/README.md) adds a PCMA tab to the printer page. It reads materials and spools through the existing Materials API, requests a physical change and records the selected assignment only after a matching local printer confirmation. The Materials extension is unchanged, including its existing Change button. The PCMA bundle is installed separately from the core binary.
 
 | Path | Purpose |
 | --- | --- |
 | `adapter/` | Moonraker connector, G-code preparation, simulator and Go tests |
+| `pcma-ui/` | Independent filament workflow using public PC and Materials APIs |
 | `deploy/rpi/` | Pinned versions, frontend patch, build and installation scripts |
 | `tests/` | Isolated PC integration test |
 | `klipper/` | Interface contract for the printer macros |

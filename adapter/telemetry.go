@@ -113,8 +113,9 @@ const jobStartRounding = time.Minute
 // Moonraker sends only what changed, so a reading alone does not say which
 // print is on the bed or which head is printing.
 type reader struct {
-	prints prints
-	heads  heads
+	pcmaContract int
+	prints       prints
+	heads        heads
 }
 
 // patchesFrom turns one reading of the Klipper objects into patches, in a fixed
@@ -128,7 +129,13 @@ func (r *reader) patchesFrom(status map[string]json.RawMessage, now time.Time) [
 	objects := objectFields(status)
 
 	var out []connectorapi.StatePatch
-	for _, field := range []string{"contract_version", "execution_id", "phase", "loaded_material", "loaded_color", "bed_clear_confirmed", "bed_clear_for", "bed_clear_sequence", "bed_clear_ack_for", "bed_clear_ack_sequence"} {
+	if version := objects[evoObject]["contract_version"]; len(version) != 0 {
+		_ = json.Unmarshal(version, &r.pcmaContract)
+	}
+	if r.pcmaContract == 1 && r.heads.count == 1 {
+		out = append(out, confirmedFilamentPatches(objects[evoObject])...)
+	}
+	for _, field := range []string{"contract_version", "execution_id", "phase", "loaded_material", "loaded_color", "change_id", "confirmed_change_id", "filament_phase", "bed_clear_confirmed", "bed_clear_for", "bed_clear_sequence", "bed_clear_ack_for", "bed_clear_ack_sequence"} {
 		out = appendVerbatim(out, objects[evoObject][field], "/pcma/"+field)
 	}
 	phase := klipperText(objects[evoObject]["phase"])

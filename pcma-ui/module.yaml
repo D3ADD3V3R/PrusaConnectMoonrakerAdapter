@@ -1,0 +1,17 @@
+name: pcma-tools
+kind: asset
+version: 0.3.4
+license: OCL v1.1 + Micro v1 + NoSaaS v1 + SWAtt v1
+title: PCMA
+summary: Manual Moonraker filament changes with confirmed Materials assignments.
+codeowner: D3ADD3V3R
+require:
+  core: ">=0.1.0-beta.1"
+  com.github.aux.prusa3d.materials: ">=0.2.5 <0.3.0"
+ui:
+  entry: ui/index.js
+  library: ">=0.1.0 <1.0.0"
+  contributes:
+    device_tab:
+      - id: filament
+        title: PCMA

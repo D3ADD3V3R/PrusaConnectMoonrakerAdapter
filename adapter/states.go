@@ -29,16 +29,17 @@ const (
 func states() connectorapi.StateSet {
 	idle := []connectorapi.Capability{VerbSendStateInfo, VerbNozzleTarget, VerbBedTarget}
 	idle = append(idle, connectorapi.VerbSendInfo, connectorapi.VerbSendFileInfo, connectorapi.VerbCreateFolder, connectorapi.VerbDeleteFile, connectorapi.VerbDeleteFolder)
+	maintenance := append([]connectorapi.Capability{VerbHome, VerbMove, VerbMoveZ, VerbMesh, VerbLoadFilament, VerbUnloadFilament}, idle...)
 
 	return connectorapi.StateSet{
 		States: []connectorapi.DeviceState{
-			{Name: stateIdle, DisplayName: "Idle", Accepts: append([]connectorapi.Capability{VerbStartPrint}, idle...)},
+			{Name: stateIdle, DisplayName: "Idle", Accepts: append([]connectorapi.Capability{VerbStartPrint}, maintenance...)},
 			{Name: statePrinting, DisplayName: "Printing", Accepts: append(
 				[]connectorapi.Capability{VerbPausePrint, VerbStopPrint}, idle...)},
 			{Name: statePaused, DisplayName: "Paused", Accepts: append(
-				[]connectorapi.Capability{VerbResumePrint, VerbStopPrint}, idle...)},
-			{Name: stateFinished, DisplayName: "Finished", Accepts: append([]connectorapi.Capability{VerbStartPrint}, idle...)},
-			{Name: stateStopped, DisplayName: "Stopped", Accepts: append([]connectorapi.Capability{VerbStartPrint}, idle...)},
+				[]connectorapi.Capability{VerbResumePrint, VerbStopPrint, VerbLoadFilament, VerbUnloadFilament}, idle...)},
+			{Name: stateFinished, DisplayName: "Finished", Accepts: append([]connectorapi.Capability{VerbStartPrint}, maintenance...)},
+			{Name: stateStopped, DisplayName: "Stopped", Accepts: append([]connectorapi.Capability{VerbStartPrint}, maintenance...)},
 			{Name: stateError, DisplayName: "Error", Accepts: append([]connectorapi.Capability{VerbStartPrint}, idle...)},
 		},
 		Transitions: []connectorapi.Transition{

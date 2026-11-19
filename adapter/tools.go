@@ -13,11 +13,34 @@ import (
 // (klippy/kinematics/extruder.py). Each one is a head of the tool tree:
 // `extruder` is head "0", `extruder1` is head "1".
 //
-// Klipper reports no nozzle type, no loaded material and no multi-material
-// unit, so this driver writes none of those paths and the host reads unknown.
+// Native Klipper reports no loaded material. The optional PCMA contract supplies
+// locally confirmed material and color for a single extruder.
 
 // extruderPrefix is the name every extruder object starts with.
 const extruderPrefix = "extruder"
+
+func confirmedFilamentPatches(fields map[string]json.RawMessage) []connectorapi.StatePatch {
+	var out []connectorapi.StatePatch
+	for _, item := range []struct{ field, member string }{{"loaded_material", connectorapi.MaterialAbbreviation}, {"loaded_color", connectorapi.MaterialColor}} {
+		raw, present := fields[item.field]
+		if !present {
+			continue
+		}
+		value := klipperText(raw)
+		encoded := json.RawMessage(`null`)
+		if item.field == "loaded_material" && value != "UNKNOWN" && manualMaterialID.MatchString(value) {
+			encoded, _ = json.Marshal(value)
+		}
+		if item.field == "loaded_color" && strings.HasPrefix(value, "C_") {
+			color := "#" + strings.TrimPrefix(value, "C_")
+			if connectorapi.ValidColor(color) {
+				encoded, _ = json.Marshal(color)
+			}
+		}
+		out = append(out, connectorapi.StatePatch{Path: connectorapi.ToolPath("0", item.member), Value: encoded})
+	}
+	return out
+}
 
 // toolOf is the tool index an object name is, counted from 0, and false for
 // an object that is not an extruder.

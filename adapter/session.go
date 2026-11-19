@@ -106,7 +106,8 @@ type Session struct {
 
 	nextID atomic.Uint64
 
-	writing sync.Mutex
+	writing       sync.Mutex
+	manualActions sync.Mutex
 
 	pending sync.Map
 
@@ -184,6 +185,7 @@ func (s *Session) handshake(ctx context.Context, offered connectorapi.Set) (conn
 	s.first = append(s.first, s.reader.patchesFrom(opening.Status, time.Now())...)
 
 	s.probe = probe(listed.Objects, heaters, len(extruders), offered)
+	s.probeManual(offered)
 	if err := s.discoverFiles(ctx, offered, listed.Objects); err != nil {
 		return nil, err
 	}
@@ -319,18 +321,29 @@ func (s *Session) Do(ctx context.Context, cmd connectorapi.Command) (connectorap
 			New("the printer does not have that capability").
 			With(fault.StringParam("verb", cmd.Verb.String()))
 	}
+	if manualVerb(cmd.Verb) || cmd.Verb == VerbStartPrint || cmd.Verb == VerbResumePrint {
+		if !s.manualActions.TryLock() {
+			return manualRefused("another manual action or print start is in progress"), nil
+		}
+		defer s.manualActions.Unlock()
+	}
+	if manualVerb(cmd.Verb) {
+		return s.manualCommand(ctx, cmd)
+	}
 	if result, handled, err := s.fileCommand(ctx, cmd); handled {
 		return result, err
 	}
 	if cmd.Verb == VerbStartPrint {
 		return s.startPrint(ctx, cmd)
 	}
-	if cmd.Verb == VerbResumePrint && s.executions != nil {
+	if cmd.Verb == VerbResumePrint && (s.executions != nil || slices.Contains(s.objects, evoObject)) {
 		snapshot, err := s.executionSnapshot(ctx)
 		if err != nil {
 			return connectorapi.Result{}, err
 		}
-		if snapshot.Evo.ContractVersion != 1 || snapshot.Evo.Phase != "PAUSED_OTHER" {
+		pendingFilament := slices.Contains([]string{"REQUESTED", "UNLOADING", "LOADING", "AWAITING_CONFIRMATION"}, snapshot.Evo.FilamentPhase)
+		unconfirmedChange := snapshot.Evo.ChangeID != "" && (snapshot.Evo.ConfirmedChangeID != snapshot.Evo.ChangeID || snapshot.Evo.FilamentPhase != "CONFIRMED")
+		if snapshot.Evo.ContractVersion != 1 || snapshot.Evo.Phase != "PAUSED_OTHER" || pendingFilament || unconfirmedChange {
 			return blockedStart("this pause requires the local material confirmation"), nil
 		}
 	}
@@ -376,6 +389,10 @@ func (s *Session) callFor(cmd connectorapi.Command) (method string, params any, 
 func (s *Session) call(
 	ctx context.Context, method string, params any,
 ) (result json.RawMessage, refusal *rpcError, err error) {
+	return s.callWithTimeout(ctx, method, params, s.timeout)
+}
+
+func (s *Session) callWithTimeout(ctx context.Context, method string, params any, timeout time.Duration) (result json.RawMessage, refusal *rpcError, err error) {
 	// Before the write and not only around the wait. A caller who has already
 	// given up must not move the machine, and a pause the caller cancelled is
 	// still a pause once it is on the wire.
@@ -393,7 +410,7 @@ func (s *Session) call(
 		return nil, nil, err
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, s.timeout)
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	select {

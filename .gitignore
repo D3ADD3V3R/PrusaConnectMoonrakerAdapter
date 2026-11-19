@@ -6,6 +6,7 @@
 /Planungs.md
 **/node_modules/
 **/dist/
+**/.vitest/
 **/__pycache__/
 *.py[cod]
 *.exe
