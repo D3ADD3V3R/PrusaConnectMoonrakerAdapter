@@ -45,10 +45,10 @@ The build downloads Prusa Connect at commit `b194cb83b682822e95e839a3cecf4391f39
 | `make test` | Run adapter tests and Go vet |
 | `make smoke` | Test an isolated PC instance and simulator, including the embedded web assets |
 | `make check-install` | Exercise installation and rollback with an isolated service model |
-| `make install` | Run checks, back up the installed binary, replace it and restart the service |
+| `make install` | Build and check, migrate configuration, generate profiles, enable the PCMA tab and restart with rollback |
 | `make status` | Read the installed service state and version |
 
-The default install target is `/home/administrator/prusa-connect/prusa-connect`, served by `prusa-connect.service`. Override `INSTALL_DIR`, `SERVICE` and `HEALTH_URL` when the existing installation differs. Sources and build outputs stay in the separate build directory. Installation does not copy production configuration or credentials into this repository.
+The default install target is `/home/administrator/prusa-connect/prusa-connect`, served by `prusa-connect.service`. One `make install` also updates the existing operator configuration, generates capability profiles from the registered Moonraker endpoints and enables the independent PCMA tab. The assistant asks about legacy connector migration, missing printer addresses and sudo credentials when needed. Existing endpoint identities and unrelated settings are retained. Configuration, resource overlay and binary are backed up together. Override `INSTALL_DIR`, `SERVICE` and `HEALTH_URL` when the existing installation differs. Sources and build outputs stay in the separate build directory. Installation does not copy production configuration or credentials into this repository. Materials must already be enabled; printer macros and hardware acceptance remain separate.
 
 ## Connect a printer
 
@@ -88,7 +88,7 @@ Generation currently supports one extruder. Heater limits come from explicit con
 
 ## Source layout
 
-The independent [PCMA UI module](pcma-ui/README.md) adds a PCMA tab to the printer page. It reads materials and spools through the existing Materials API, requests a physical change and records the selected assignment only after a matching local printer confirmation. The Materials extension is unchanged, including its existing Change button. The PCMA bundle is installed separately from the core binary.
+The independent [PCMA UI module](pcma-ui/README.md) adds a PCMA tab to the printer page. It reads materials and spools through the existing Materials API, requests a physical change and records the selected assignment only after a matching local printer confirmation. The Materials extension is unchanged, including its existing Change button. The Pi installer deploys the PCMA bundle together with the core binary.
 
 | Path | Purpose |
 | --- | --- |

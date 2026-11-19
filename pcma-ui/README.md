@@ -22,13 +22,15 @@ pnpm run build
 
 ## Install
 
-Use the PCMA adapter build and a regenerated capability profile that contains the new `request_id` argument. Materials `0.2.5` must already be installed. Copy the bundle and print a ready-to-merge resource declaration with:
+On the Pi, run `make install` in the prepared build directory. It generates and registers capability profiles, installs this asset and enables the PCMA tab in the existing configuration. Materials `>=0.2.5 <0.3.0` must already be enabled. Existing user roles still apply. No separate resource merge or service restart is needed.
+
+For a manual installation elsewhere, use the PCMA adapter build and a regenerated capability profile that contains the new `request_id` argument. Copy the bundle and print a ready-to-merge resource declaration with:
 
 ```sh
 python3 pcma-ui/prepare-install.py /home/administrator/prusa-connect/modules/pcma-tools-0.3.4
 ```
 
-The destination must be new. The helper calculates the same directory digest as PC and prints a declaration under `resources.asset.pcma-tools`. Merge it into the existing PC configuration, preserving other resources, then restart PC. The build's `make install` updates the core binary; it does not silently rewrite module declarations or replace Materials.
+The destination must be new. The helper calculates the same directory digest as PC and prints a declaration under `resources.asset.pcma-tools`. For this manual path, merge it into the existing PC configuration, preserving other resources, then restart PC. Materials is not replaced.
 
 The person using the workflow needs access to the PCMA asset and permission to configure its records, permission to operate the printer, and the Materials permissions needed to read the catalogue and assign a tool. A refused record write stops the workflow before a physical command. The browser uses its existing signed-in session and holds no copied API token.
 

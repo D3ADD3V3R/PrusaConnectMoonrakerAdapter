@@ -1,20 +1,31 @@
 # PrusaConnectMoonrakerAdapter-Build auf PrinterFarmHost
 
-Die Quellen liegen unter `/home/administrator/pcma-build`. Das Installationsziel ist `/home/administrator/prusa-connect/prusa-connect`, der Dienst heißt `prusa-connect.service`.
+Der vorbereitete Quellstand liegt unter `/home/administrator/pcma-build-0.3.4-f0aba7d`. Das Installationsziel ist `/home/administrator/prusa-connect/prusa-connect`, der Dienst heißt `prusa-connect.service`.
 
 Als `administrator` ausführen.
 
 Für einen frischen Checkout zuerst `python3 deploy/rpi/stage.py "$HOME/pcma-build"` im Repository ausführen. Das kopiert die benötigten Quellen in den separaten Buildordner. Beim ersten `make` wird der gepinnte Prusa-Checkout geladen; `upstream.patch` ergänzt die Moonraker-Einrichtung in der Oberfläche.
 
 ```sh
-cd /home/administrator/pcma-build
-make
+cd /home/administrator/pcma-build-0.3.4-f0aba7d
 make install
 ```
 
 `make` richtet bei Bedarf Go 1.26.11, Node 24.22.3 und pnpm 11.3.0 unter `.tools` ein. Go- und Node-Archive werden mit den hinterlegten offiziellen SHA-256-Prüfsummen geprüft. Der Prusa-Kern ist auf Commit `b194cb83b682822e95e839a3cecf4391f3929e87` gepinnt. Der Build umfasst das eingebettete PC-Webfrontend, den PCMA-Connector, das Vorbereitungswerkzeug und den Profilgenerator. Die Ergebnisse liegen unter `bin`.
 
-Zusätzlich entsteht das eigenständige PCMA-UI-Modul unter `pcma-ui/dist`. Es nutzt den unveränderten Materials-API-Client; der Quellcode des Materials-Moduls wird nicht angepasst. Installation und benötigte Berechtigungen stehen in `pcma-ui/README.md`. `make install` tauscht die Core-Binary aus; das zusätzliche Asset wird über eine eigene Moduldeklaration aktiviert.
+`make install` baut und prüft zuerst alle Komponenten. Danach erledigt der Installer die Einrichtung:
+
+- Den aktiven Konfigurationspfad aus dem Dienst lesen; ohne `--config` gilt `config/config.yaml`. Ein ausdrücklich im Dienst eingetragenes `config.yml` wird ebenfalls verwendet.
+- Vorhandene Moonraker-Endpunkte lesen und aktuelle Capability-Profile direkt aus den Druckern erzeugen. Dabei werden keine Bewegungs-, Heiz- oder Druckbefehle gesendet.
+- Alte Moonraker-Connectortypen nach einer Rückfrage auf `pcma-moonraker` umstellen. Instanznamen, Endpunkte und vorhandene Druckerzuordnungen bleiben erhalten. Die Instanz `pcma` für „Add a Printer“ wird ergänzt.
+- Das PCMA-UI-Paket in ein eigenes Verzeichnis unter der Installation kopieren und den Reiter über `resources.asset.pcma-tools` aktivieren. Materials bleibt unverändert.
+- Binary, Konfiguration und Ressourcendatei sichern, die Änderungen übernehmen und den Dienst starten. Bei einem Fehler werden Binary, Konfiguration und Ressourcendatei zurückgesetzt; neu angelegte Profile und UI-Pakete werden entfernt.
+
+Der Assistent fragt bei Bedarf nach der Moonraker-Adresse und nach dem sudo-Passwort. Verlangt PC eine Anmeldung, fragt er außerdem verdeckt nach einem PC-API-Token mit Leserechten auf die Ressourcen und das PCMA-Asset. Der Token wird nicht gespeichert. Vor dem Austausch prüft der Installer den API-Zugriff; nach dem Start prüft er zusätzlich den Zustand des PCMA-Assets und dessen veröffentlichten UI-Einstieg. Für die vorhandene Installation braucht es keine zusätzliche manuelle YAML-Bearbeitung. Ein weiteres `make install` aktualisiert dieselbe Einrichtung. Bestehende Upload-/Startschalter und fremde Einstellungen bleiben erhalten; neue Connectorinstanzen erhalten `starts: false`.
+
+Voraussetzung ist ein aktiviertes Materials-Modul in Version `>=0.2.5 <0.3.0`. Die Berechtigungen des angemeldeten PC-Benutzers bleiben maßgeblich; der Installer erweitert keine Benutzerrollen. Die Druckermakros und deren Hardwareprüfung sind ein separater Schritt.
+
+Für automatisierte Aufrufe lässt sich die Migration mit `INSTALL_MIGRATE=1` bestätigen. `INSTALL_MOONRAKER_ADDRESS` liefert eine Adresse, wenn noch kein Endpunkt vorliegt. `INSTALL_PC_TOKEN` liefert bei Bedarf den PC-API-Token. `INSTALL_CONFIG` benennt eine abweichende Konfigurationsdatei; der Dienst muss diese Datei ebenfalls verwenden. Fehlende Angaben führen ohne Terminal vor dem Austausch zum Abbruch. Drucker desselben Modells mit unterschiedlichen Firmwarebereichen oder Capabilities brauchen getrennte Connectorinstanzen.
 
 Der Build verwendet einen Go-Prozess und begrenzte Go-/Node-Speichereinstellungen für den Pi mit etwa 1 GB RAM. Temporäre Dateien und Caches liegen auf der SD-Karte im Build-Verzeichnis. Der erste Build lädt die gepinnten Abhängigkeiten und benötigt entsprechend Zeit.
 
@@ -24,8 +35,8 @@ Wie die vorhandene Release-Binary verwendet der Build `CGO_ENABLED=0` und die Ta
 
 `make test` führt die Adapter- und SDK-Tests sowie `go vet` aus. `make smoke` baut und prüft eine separate PC-Instanz auf Loopback, einschließlich Webfrontend, Geräteanlage, Dateiansicht, Upload, Druckstart und simulierter Materialpause. Die Testinstanz verwendet temporäre eigene Daten und den Simulator.
 
-`make install` führt beide Prüfungen aus, legt eine datierte Sicherung der bisherigen Binary unter `/home/administrator/prusa-connect/backups` an und tauscht die Binary atomar aus. Danach startet es den vorhandenen Dienst über `sudo -n systemctl restart` neu. Die Kontrolle vergleicht den Gesundheitsendpunkt mit der Build-Version und die laufende Prozessdatei mit der erzeugten SHA-256. Bei einem Installationsfehler nach dem Austausch wird die Sicherung wiederhergestellt und der vorherige Dienstzustand wiederhergestellt. Der Sicherungspfad wird ausgegeben.
+Die Sicherungen liegen in einem datierten Unterordner von `/home/administrator/prusa-connect/backups`. Der Dienst wird für den Austausch gestoppt. Die Kontrolle vergleicht den Gesundheitsendpunkt mit der Build-Version und die laufende Prozessdatei mit der erzeugten SHA-256. Der Sicherungspfad wird ausgegeben.
 
-Der Installer verarbeitet die ausführbare Datei. Die bestehende PC-Konfiguration und ihre Daten werden vom gestarteten PC verwendet. Der PCMA-Typ ist im Build registriert. Seine Einrichtung als Connectorinstanz und das spätere Freischalten von Upload/Start richten sich nach `adapter/README.md` und `klipper/adapter-contract.md`.
+Die Datenbank und Druckerhistorie werden nicht ersetzt. Der Installer schaltet automatische Druckstarts nicht zusätzlich frei. Deren Voraussetzungen stehen in `adapter/README.md` und `klipper/adapter-contract.md`.
 
 Weitere Ziele lassen sich mit `make help` anzeigen. `make status` liest Dienstzustand und Version. Die Make-Variablen `INSTALL_DIR`, `SERVICE` und `HEALTH_URL` passen Ziel und Gesundheitsprüfung bei Bedarf an. Die Standardwerte entsprechen dem geprüften PrinterFarmHost.

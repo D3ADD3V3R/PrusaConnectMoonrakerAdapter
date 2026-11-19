@@ -28,7 +28,7 @@ export HEALTH_URL ?= http://127.0.0.1:8080/api/v1/health
 .PHONY: help bootstrap frontend build test smoke check-install install status
 
 help:
-	@printf '%s\n' 'make             Build PC with embedded frontend and PCMA adapter' 'make test        Run adapter and SDK tests plus go vet' 'make smoke       Build and test a separate loopback PC instance' 'make install     Verify, back up, replace binary and restart service' 'make status      Read the installed service and version'
+	@printf '%s\n' 'make             Build PC with embedded frontend and PCMA adapter' 'make test        Run adapter and SDK tests plus go vet' 'make smoke       Build and test a separate loopback PC instance' 'make install     Build, configure PCMA, install profiles/UI and restart with rollback' 'make status      Read the installed service and version'
 
 bootstrap:
 	@bash "$(BUILD_ROOT)/scripts/bootstrap.sh"
@@ -45,7 +45,7 @@ test: bootstrap
 smoke: build
 	@python3 "$(BUILD_ROOT)/tests/pc_smoke.py" --require-ui
 
-check-install:
+check-install: build
 	@mkdir -p "$(TMPDIR)"
 	@python3 "$(BUILD_ROOT)/tests/install_smoke.py"
 
