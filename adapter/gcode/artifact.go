@@ -43,6 +43,15 @@ type Options struct {
 	Color          string
 }
 
+// SourceMetadata reads supported slicer values without changing the source.
+func SourceMetadata(src io.ReadSeeker) (material, color string, err error) {
+	if _, err = src.Seek(0, io.SeekStart); err != nil {
+		return "", "", err
+	}
+	result, err := scan(src)
+	return result.material, result.color, err
+}
+
 var identifier = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 var profileID = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 var materialID = regexp.MustCompile(`^[A-Z][A-Z0-9_-]{0,31}$`)

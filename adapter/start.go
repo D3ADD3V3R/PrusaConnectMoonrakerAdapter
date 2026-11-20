@@ -13,6 +13,8 @@ import (
 )
 
 type evoState struct {
+	LoadedMaterial          string `json:"loaded_material"`
+	LoadedColor             string `json:"loaded_color"`
 	ChangeID                string `json:"change_id"`
 	ConfirmedChangeID       string `json:"confirmed_change_id"`
 	FilamentPhase           string `json:"filament_phase"`

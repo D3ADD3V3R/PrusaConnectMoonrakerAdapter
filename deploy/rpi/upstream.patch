@@ -215,6 +215,106 @@ index 4f4b072..d777967 100644
  // TestADriverIsResolvedAgainstItsOwnProfilesAndNobodyElses is the defect this
  // wiring exists to stop.
  //
+diff --git a/internal/app/devicefiles.go b/internal/app/devicefiles.go
+index 6cc20ec..4cc2bc3 100644
+--- a/internal/app/devicefiles.go
++++ b/internal/app/devicefiles.go
+@@ -722,10 +722,26 @@ func (d *devices) relay(
+ 		return httpapi.DeviceTransfer{}, err
+ 	}
+ 
++	prepared, cleanup, err := entry.session.PrepareUpload(ctx, connectorapi.Upload{Path: upload.Path, Content: content})
++	if cleanup != nil {
++		defer func() {
++			if closeErr := cleanup.Close(); closeErr != nil {
++				d.log.WarnContext(ctx, "remove prepared transfer content", "error", closeErr)
++			}
++		}()
++	}
++	if err != nil {
++		return httpapi.DeviceTransfer{}, err
++	}
++	upload.Path, content = prepared.Path, prepared.Content
++
+ 	// Only asked here. A replace deletes the printer's file below, once every
+ 	// check that can still refuse the send has passed.
+ 	replacing, err := d.destination(ctx, entry, id, upload, content, reuse)
+ 	if err != nil {
++		if errors.Is(err, errHeldSame) {
++			return httpapi.DeviceTransfer{Path: upload.Path}, err
++		}
+ 		return httpapi.DeviceTransfer{}, err
+ 	}
+ 
+diff --git a/internal/app/deviceprint.go b/internal/app/deviceprint.go
+index 899a6a9..46f34b8 100644
+--- a/internal/app/deviceprint.go
++++ b/internal/app/deviceprint.go
+@@ -100,6 +100,11 @@ func (d *devices) printing(
+ 	if request.Storage != "" {
+ 		transfer, err := d.send(ctx, principal, id, httpapi.DeviceUpload(request), opened, true)
+ 
++		if transfer.Path != "" {
++			request.Path = transfer.Path
++			out.Path = transfer.Path
++		}
++
+ 		switch {
+ 		case errors.Is(err, errHeldSame):
+ 			// The printer holds this file already, so the print starts on it.
+@@ -229,7 +234,7 @@ func (d *devices) StartPrint(
+ 
+ 	select {
+ 	case transfer := <-started:
+-		return httpapi.DevicePrintResult{Path: request.Path, Transfer: &transfer}, nil
++		return httpapi.DevicePrintResult{Path: transfer.Path, Transfer: &transfer}, nil
+ 	case result := <-printed:
+ 		return result, nil
+ 	case err := <-failed:
+diff --git a/internal/printer/capability/transfer.go b/internal/printer/capability/transfer.go
+index 3572521..35e50de 100644
+--- a/internal/printer/capability/transfer.go
++++ b/internal/printer/capability/transfer.go
+@@ -3,6 +3,7 @@ package capability
+ import (
+ 	"context"
+ 	"fmt"
++	"io"
+ 
+ 	"github.com/prusa3d/prusa-connect/sdk/connectorapi"
+ 	"github.com/prusa3d/prusa-connect/sdk/fault"
+@@ -57,3 +58,31 @@ func (s *Session) transfers(verb connectorapi.Capability) (connectorapi.Transfer
+ 
+ 	return transfers, nil
+ }
++
++// UploadPreparer optionally derives a destination and content before transfer checks.
++// The caller owns cleanup until the relay has finished, including a refused send.
++type UploadPreparer interface {
++	PrepareUpload(context.Context, connectorapi.Upload) (connectorapi.Upload, io.Closer, error)
++}
++
++// PrepareUpload keeps ordinary drivers unchanged and gates preparation like Send.
++func (s *Session) PrepareUpload(ctx context.Context, up connectorapi.Upload) (connectorapi.Upload, io.Closer, error) {
++	if refusal := connectorapi.RefusePathEscape(up.Path); refusal != nil {
++		return connectorapi.Upload{}, nil, refusal
++	}
++	preparer, ok := As[UploadPreparer](s.inner)
++	if !ok {
++		return up, nil, nil
++	}
++	if _, err := s.transfers(connectorapi.VerbFileUpload); err != nil {
++		return connectorapi.Upload{}, nil, err
++	}
++	prepared, cleanup, err := preparer.PrepareUpload(ctx, up)
++	if err == nil {
++		err = connectorapi.RefusePathEscape(prepared.Path)
++		if prepared.Content == nil || prepared.Content.Size() < 0 {
++			err = connectorapi.ErrTransferRefused
++		}
++	}
++	return prepared, cleanup, err
++}
 diff --git a/internal/transport/http/httpapi/budget_test.go b/internal/transport/http/httpapi/budget_test.go
 index 238f803..8c96cb3 100644
 --- a/internal/transport/http/httpapi/budget_test.go
@@ -227,6 +327,22 @@ index 238f803..8c96cb3 100644
  		http.MethodGet + " " + storageContentPath,
  		http.MethodPut + " " + storageContentPath,
  		http.MethodPost + " " + storageContentPath,
+diff --git a/internal/transport/http/httpapi/devicefiles.go b/internal/transport/http/httpapi/devicefiles.go
+index 5f17c02..a3d2cb6 100644
+--- a/internal/transport/http/httpapi/devicefiles.go
++++ b/internal/transport/http/httpapi/devicefiles.go
+@@ -316,7 +316,10 @@ func registerSendFile(api huma.API, fleet DeviceFleet) {
+ 		}
+ 
+ 		out := &sendFileOutput{}
+-		out.Body.Path = in.Body.Path
++		out.Body.Path = transfer.Path
++		if out.Body.Path == "" {
++			out.Body.Path = in.Body.Path
++		}
+ 		out.Body.Transfer = transfer
+ 
+ 		return out, nil
 diff --git a/internal/transport/http/httpapi/devices.go b/internal/transport/http/httpapi/devices.go
 index 170026d..c80296b 100644
 --- a/internal/transport/http/httpapi/devices.go
@@ -493,6 +609,12 @@ new file mode 100644
 +---
 +
 +Printer commands use the long request budget and release the listener's initial write deadline while waiting. The generated client also keeps the request open. Homing, bed probing and filament heating can take longer than the ordinary thirty-second API budget. The driver still bounds each action and reports an unknown outcome if its deadline or connection ends before the printer answers. An unknown outcome is never retried automatically.
+diff --git a/docs/changes/20261120-130000-prepared-upload.md b/docs/changes/20261120-130000-prepared-upload.md
+new file mode 100644
+--- /dev/null
++++ b/docs/changes/20261120-130000-prepared-upload.md
+@@ -0,0 +1 @@
++Drivers can prepare a file before PC records its transfer, and PC uses the resulting destination in upload responses and when starting the print. Transfer sizes and progress refer to the prepared bytes.
 diff --git a/frontend/src/lib/printers/moonraker-setup/moonraker-setup-story.svelte b/frontend/src/lib/printers/moonraker-setup/moonraker-setup-story.svelte
 new file mode 100644
 --- /dev/null
@@ -1459,4 +1581,71 @@ new file mode 100644
 +  "app.addPrinter.attribution": "PrusaConnectMoonrakerAdapter von D3ADD3V3R. Basiert auf Prusa Connect Local von Prusa Research a.s. (prusa3d.com).",
 +  "app.addPrinter.moonraker.update": "Adresse speichern",
 +  "app.addPrinter.moonraker.edit": "Adresse ändern"
++}
+diff --git a/internal/printer/capability/prepare_test.go b/internal/printer/capability/prepare_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/printer/capability/prepare_test.go
+@@ -0,0 +1,62 @@
++package capability_test
++
++import (
++	"context"
++	"io"
++	"strings"
++	"testing"
++
++	"github.com/prusa3d/prusa-connect/internal/printer/capability"
++	"github.com/prusa3d/prusa-connect/sdk/connectorapi"
++	"github.com/stretchr/testify/require"
++)
++
++type preparationContent string
++
++func (c preparationContent) Size() int64 { return int64(len(c)) }
++func (c preparationContent) Open(context.Context, int64) (io.ReadCloser, error) {
++	return io.NopCloser(strings.NewReader(string(c))), nil
++}
++
++type preparationSession struct {
++	acceptingSession
++	prepared int
++	target   string
++}
++
++func (s *preparationSession) PrepareUpload(_ context.Context, up connectorapi.Upload) (connectorapi.Upload, io.Closer, error) {
++	s.prepared++
++	up.Path = s.target
++	up.Content = preparationContent("derived bytes")
++	return up, nil, nil
++}
++func TestPreparationIsGatedAndCannotEscapeAStorage(t *testing.T) {
++	driver := &preparationSession{target: "usb/derived.gcode"}
++	session := capability.Wrap(driver, resolutionOf(connectorapi.VerbSendInfo))
++	_, _, err := session.PrepareUpload(t.Context(), connectorapi.Upload{Path: "usb/original.gcode", Content: preparationContent("original")})
++	require.Error(t, err)
++	require.Zero(t, driver.prepared)
++	session = capability.Wrap(driver, resolutionOf(connectorapi.VerbFileUpload))
++	_, _, err = session.PrepareUpload(t.Context(), connectorapi.Upload{Path: "../secret.gcode", Content: preparationContent("original")})
++	require.Error(t, err)
++	require.Zero(t, driver.prepared)
++	driver.target = "usb/../../secret.gcode"
++	_, _, err = session.PrepareUpload(t.Context(), connectorapi.Upload{Path: "usb/original.gcode", Content: preparationContent("original")})
++	require.Error(t, err)
++	require.Equal(t, 1, driver.prepared)
++}
++func TestPreparationCarriesDerivedSizeAndPathWhileOrdinaryDriversPassThrough(t *testing.T) {
++	up := connectorapi.Upload{Path: "usb/original.gcode", Content: preparationContent("original")}
++	ordinary := capability.Wrap(&acceptingSession{}, resolutionOf(connectorapi.VerbFileUpload))
++	same, cleanup, err := ordinary.PrepareUpload(t.Context(), up)
++	require.NoError(t, err)
++	require.Nil(t, cleanup)
++	require.Equal(t, up.Path, same.Path)
++	require.Equal(t, up.Content.Size(), same.Content.Size())
++	driver := &preparationSession{target: "usb/derived.gcode"}
++	session := capability.Wrap(driver, resolutionOf(connectorapi.VerbFileUpload))
++	prepared, _, err := session.PrepareUpload(t.Context(), up)
++	require.NoError(t, err)
++	require.Equal(t, "usb/derived.gcode", prepared.Path)
++	require.Equal(t, int64(len("derived bytes")), prepared.Content.Size())
 +}

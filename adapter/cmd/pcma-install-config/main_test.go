@@ -122,3 +122,46 @@ func TestRetainsImplicitShippingConnector(t *testing.T) {
 		t.Fatal("implicit shipping connector lost")
 	}
 }
+func TestExecutionAndStoragePlanPreservesOtherResources(t *testing.T) {
+	dir := t.TempDir()
+	config := filepath.Join(dir, "config.yaml")
+	planPath := filepath.Join(dir, "plan.json")
+	out := filepath.Join(dir, "result.yaml")
+	original := "# Operator settings\ncore:\n  connectors:\n    ender:\n      type: pcma-moonraker\n      config: {starts: false, uploads: true}\nresources:\n  asset:\n    keep: {type: example/asset, enabled: true}\n"
+	if err := os.WriteFile(config, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := plan{Executions: map[string]map[string]any{"ender": {"starts": true, "uploads": true, "profile_id": "single", "profile_version": "r1", "materials": []string{"PLA"}, "state_path": filepath.Join(dir, "journal.db")}}, JobStorage: map[string]any{"type": "filesystem", "enabled": true, "config": map[string]any{"root": filepath.Join(dir, "jobs")}}}
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(planPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := invoke(t, "-config", config, "-plan", planPath, "-output", out); err != nil {
+		t.Fatalf("%s: %v", b, err)
+	}
+	b, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result map[string]any
+	if err = yaml.Unmarshal(b, &result); err != nil {
+		t.Fatal(err)
+	}
+	settings := result["core"].(map[string]any)["connectors"].(map[string]any)["ender"].(map[string]any)["config"].(map[string]any)
+	if settings["starts"] != true || settings["profile_id"] != "single" {
+		t.Fatal(settings)
+	}
+	resources := result["resources"].(map[string]any)
+	if resources["asset"].(map[string]any)["keep"] == nil {
+		t.Fatal("unrelated asset lost")
+	}
+	if resources["storage"].(map[string]any)["pcma-jobs"] == nil {
+		t.Fatal("job storage missing")
+	}
+	if !strings.Contains(string(b), "# Operator settings") {
+		t.Fatal("operator comment lost")
+	}
+}

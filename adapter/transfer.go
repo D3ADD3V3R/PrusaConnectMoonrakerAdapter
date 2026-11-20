@@ -20,12 +20,13 @@ import (
 )
 
 type uploadState struct {
-	transfer sync.Mutex
-	mu       sync.Mutex
-	closed   bool
-	cancel   context.CancelFunc
-	client   *http.Client
-	baseURL  *url.URL
+	preparation sync.Mutex
+	transfer    sync.Mutex
+	mu          sync.Mutex
+	closed      bool
+	cancel      context.CancelFunc
+	client      *http.Client
+	baseURL     *url.URL
 }
 
 var _ connectorapi.Transfers = (*Session)(nil)

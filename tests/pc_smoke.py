@@ -55,7 +55,11 @@ def wait_for(check, processes, timeout=40):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--require-ui', action='store_true')
+    parser.add_argument('--automatic-preparation', action='store_true')
+    parser.add_argument('--combined-print', action='store_true')
     options = parser.parse_args()
+    if options.combined_print and not options.automatic_preparation:
+        parser.error('--combined-print requires --automatic-preparation')
     test_root = ROOT / '.test-run'
     test_root.mkdir(exist_ok=True)
     binary = executable('prusa-connect-pcma')
@@ -161,14 +165,38 @@ def main():
                     return next((item for item in listing.get('items', []) if item['path'] == expected), None)
 
                 wait_for(lambda: listed_file('gcodes', 'gcodes/sample.gcode'), processes)
-                sent = request(base, device_base + '/files', 'POST', {
-                    'storage': 'local', 'source': 'job-1.gcode', 'path': 'gcodes/pcma/job-1.gcode',
-                })
-                assert sent['transfer']['state'] == 'done', sent
-                item = wait_for(lambda: listed_file('gcodes/pcma', 'gcodes/pcma/job-1.gcode'), processes)
-                assert item['size'] == len(fixture), item
-                started = request(base, device_base + '/print', 'POST', {'path': 'gcodes/pcma/job-1.gcode'})
-                assert started['command']['ok'], started
+                if options.automatic_preparation:
+                    source_name, target_path = 'source.gcode', 'source.gcode'
+                else:
+                    source_name, target_path = 'job-1.gcode', 'gcodes/pcma/job-1.gcode'
+                payload = {'storage': 'local', 'source': source_name, 'path': target_path}
+                if options.combined_print:
+                    started = request(base, device_base + '/print', 'POST', payload)
+                    sent = {'path': started['path'], 'transfer': started['transfer']}
+                else:
+                    sent = request(base, device_base + '/files', 'POST', payload)
+                    assert sent['transfer']['state'] == 'done', sent
+                actual_path = sent['path']
+                execution_id = actual_path.rsplit('/', 1)[-1].removesuffix('.gcode')
+                assert actual_path == 'gcodes/pcma/' + execution_id + '.gcode'
+                if options.automatic_preparation:
+                    assert execution_id != 'job-1'
+                item = wait_for(lambda: listed_file('gcodes/pcma', actual_path), processes)
+                if options.automatic_preparation:
+                    assert item['size'] > len(original), item
+                    with urllib.request.urlopen(sim_base + '/server/files/' + actual_path, timeout=5) as response:
+                        prepared_bytes = response.read()
+                    assert prepared_bytes.endswith(original)
+                    manifest = json.loads(prepared_bytes.splitlines()[0].decode().removeprefix('; PCMA_MANIFEST '))
+                    assert manifest['original_sha256'] == hashlib.sha256(original).hexdigest()
+                    assert manifest['material'] == 'PLA' and manifest['color'] == 'C_FF8000'
+                else:
+                    assert item['size'] == len(fixture), item
+                if not options.combined_print:
+                    started = request(base, device_base + '/print', 'POST', {'path': actual_path})
+                    assert started['command']['ok'], started
+                else:
+                    assert started['path'] == actual_path
 
                 def material_pause():
                     state = request(base, device_base)['state']
@@ -176,8 +204,8 @@ def main():
 
                 state = wait_for(material_pause, processes)
                 assert state['/pcma/execution_status'] == 'PRINT_ONGOING', state
-                assert state['/pcma/execution_id'] == 'job-1', state
-                assert state['/job/id'] == 'pcma-job-1', state
+                assert state['/pcma/execution_id'] == execution_id, state
+                assert state['/job/id'] == 'pcma-' + execution_id, state
                 resumed = request(base, device_base + '/commands', 'POST', {'verb': 'core.command.resume_print'})
                 assert not resumed['ok'], resumed
                 print(json.dumps({'result': 'PASS', 'driver': device['driver'],

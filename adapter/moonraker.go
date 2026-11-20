@@ -110,7 +110,7 @@ func doc() extension.Doc {
 			"section is not offered pause. The endpoint options vendor, model, serial and unit_uid say " +
 			"what Klipper itself does not report. Prepared starts require a persistent execution receipt, " +
 			"matching compatibility profile and an acknowledged local bed confirmation. Lost start acknowledgements are reconciled.",
-		Version:   "0.3.2",
+		Version:   "0.3.6",
 		Contract:  connectorapi.Contract,
 		Stability: extension.StabilityExperimental,
 		Options: []extension.Option{

@@ -76,10 +76,12 @@ func node(v any) *yaml.Node {
 }
 
 type plan struct {
-	Profiles map[string]string `json:"profiles"`
-	Asset    map[string]any    `json:"asset"`
-	Setup    map[string]any    `json:"setup"`
-	Records  map[string]any    `json:"records"`
+	Executions map[string]map[string]any `json:"executions"`
+	JobStorage map[string]any            `json:"job_storage"`
+	Profiles   map[string]string         `json:"profiles"`
+	Asset      map[string]any            `json:"asset"`
+	Setup      map[string]any            `json:"setup"`
+	Records    map[string]any            `json:"records"`
 }
 
 func run() error {
@@ -182,6 +184,24 @@ func run() error {
 			put(settings, "starts", node(false))
 		}
 	}
+	for name, values := range p.Executions {
+		c := get(connectors, name)
+		if c == nil || get(c, "type") == nil || get(c, "type").Value != "pcma-moonraker" {
+			return fmt.Errorf("execution connector must already be pcma-moonraker")
+		}
+		settings, e := mapping(c, "config")
+		if e != nil {
+			return e
+		}
+		for key, value := range values {
+			switch key {
+			case "starts", "uploads", "state_path", "profile_id", "profile_version", "materials", "capability_profile_path":
+				put(settings, key, node(value))
+			default:
+				return fmt.Errorf("unsupported execution setting %s", key)
+			}
+		}
+	}
 	resources, err := mapping(root, "resources")
 	if err != nil {
 		return err
@@ -196,22 +216,44 @@ func run() error {
 		}
 		put(dbs, "pcma-records", node(p.Records))
 	}
-	assets, err := mapping(resources, "asset")
-	if err != nil {
-		return err
-	}
-	if existing := get(assets, "pcma-tools"); existing != nil {
-		t := get(existing, "type")
-		if t == nil || t.Value != p.Asset["type"] {
-			return fmt.Errorf("asset pcma-tools belongs to another type")
+	if p.JobStorage != nil {
+		storages, e := mapping(resources, "storage")
+		if e != nil {
+			return e
 		}
+		if old := get(storages, "pcma-jobs"); old != nil {
+			t := get(old, "type")
+			if t == nil || t.Value != "filesystem" {
+				return fmt.Errorf("pcma-jobs belongs to another storage type")
+			}
+			var existing map[string]any
+			if e := old.Decode(&existing); e != nil {
+				return e
+			}
+			if fmt.Sprint(existing["config"]) != fmt.Sprint(p.JobStorage["config"]) {
+				return fmt.Errorf("pcma-jobs storage root differs")
+			}
+		}
+		put(storages, "pcma-jobs", node(p.JobStorage))
 	}
-	asset, err := mapping(assets, "pcma-tools")
-	if err != nil {
-		return err
-	}
-	for _, key := range []string{"type", "enabled", "required", "asset"} {
-		put(asset, key, node(p.Asset[key]))
+	if p.Asset != nil {
+		assets, err := mapping(resources, "asset")
+		if err != nil {
+			return err
+		}
+		if existing := get(assets, "pcma-tools"); existing != nil {
+			t := get(existing, "type")
+			if t == nil || t.Value != p.Asset["type"] {
+				return fmt.Errorf("asset pcma-tools belongs to another type")
+			}
+		}
+		asset, err := mapping(assets, "pcma-tools")
+		if err != nil {
+			return err
+		}
+		for _, key := range []string{"type", "enabled", "required", "asset"} {
+			put(asset, key, node(p.Asset[key]))
+		}
 	}
 	if p.Setup != nil {
 		sinks, err := mapping(resources, "sink")
