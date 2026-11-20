@@ -66,7 +66,10 @@ export class FilamentWorkflow {
         throw new WorkflowError('pcma.notReady');
       const record: ChangeRecord = {
         version: 1,
-        id: crypto.randomUUID(),
+        // LAN installations commonly use HTTP, where randomUUID is unavailable.
+        id: Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+          byte.toString(16).padStart(2, '0'),
+        ).join(''),
         device: this.#device,
         target,
         before,

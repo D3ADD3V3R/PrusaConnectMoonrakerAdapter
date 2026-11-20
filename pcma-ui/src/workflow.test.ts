@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { FilamentWorkflow } from './workflow.svelte';
 import {
   type Assignment,
@@ -104,7 +104,9 @@ const world = () => {
     targetChanged: () => {
       chosen = { ...chosen, color: '#000000' };
     },
-    targetType: (type: string) => { chosen = { ...chosen, type }; },
+    targetType: (type: string) => {
+      chosen = { ...chosen, type };
+    },
     replaceAssignment: (record: ChangeRecord) => {
       current = assigned({
         ...record,
@@ -118,6 +120,26 @@ const world = () => {
 };
 
 describe('filament workflow', () => {
+  it('saves an intent before sending when HTTP provides no randomUUID', async () => {
+    const randomUUID = vi.spyOn(crypto, 'randomUUID').mockImplementation(() => {
+      throw new Error('randomUUID is unavailable over LAN HTTP');
+    });
+    try {
+      const held = world();
+      const workflow = new FilamentWorkflow(held.service, 'printer-1');
+      await workflow.start({ material: target.material });
+      expect(workflow.error).toBeUndefined();
+      expect(workflow.pending?.id).toMatch(/^[0-9a-f]{32}$/u);
+      expect(held.calls).toEqual([
+        'save:prepared',
+        `send:${String(workflow.pending?.id)}`,
+        'save:waiting',
+      ]);
+      expect(randomUUID).not.toHaveBeenCalled();
+    } finally {
+      randomUUID.mockRestore();
+    }
+  });
   it('does not copy Materials alias rules when a confirmed change keeps the original assignment identity', async () => {
     const held = world();
     held.targetType('WOOD');
